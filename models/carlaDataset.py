@@ -57,20 +57,23 @@ class HDF5Dataset(data.Dataset):
         with h5py.File(file_path) as h5_file:
             # Walk through all groups, extracting datasets
             for ep_name, episode in h5_file.items():
-                for dname, data in episode.items():
-                    for tname, timestamp in data.items():
-                        print(timestamp.value)
+                for tname, timestamp in episode.items():
+                    shapes = []
+                    datas = {}
+                    for dname, data in data.items():
+                        shapes.append(data.value.shape)
+                        datas[dname] = data.values
 
-                        """ # if data is not loaded its cache index is -1
-                        idx = -1
-                        if load_data:
-                            # add data to the data cache
-                            idx = self._add_to_cache(timestamp.value, file_path)
+                    # if data is not loaded its cache index is -1
+                    idx = -1
+                    if load_data:
+                        # add data to the data cache
+                        idx = self._add_to_cache(datas, file_path)
                         
-                        # type is derived from the name of the dataset; we expect the dataset
-                        # name to have a name such as 'data' or 'label' to identify its type
-                        # we also store the shape of the data in case we need it
-                        self.data_info.append({'file_path': file_path, 'type': dname, 'shape': ds.value.shape, 'cache_idx': idx}) """
+                    # type is derived from the name of the dataset; we expect the dataset
+                    # name to have a name such as 'data' or 'label' to identify its type
+                    # we also store the shape of the data in case we need it
+                    self.data_info.append({'file_path': file_path, 'episode': ep_name, 'timestamp': tname, 'shape': shapes, 'cache_idx': idx})
 
     def _load_data(self, file_path):
         """Load data to the cache given the file
@@ -133,4 +136,4 @@ if __name__ == "__main__":
     path = 'dataset'
     #f = h5py.File(path, 'r')
     #print(f['run_000_morning']['depth']['1617979592423'])
-    HDF5Dataset(path, load_data=True)
+    HDF5Dataset(path)
