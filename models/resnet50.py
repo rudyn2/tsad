@@ -140,6 +140,7 @@ class TrafficLightClassifier(nn.Module):
     """
     Traffic Light Status Classifier: Red or Green.
     """
+
     def __init__(self):
         super(TrafficLightClassifier, self).__init__()
         self.fc1 = nn.Linear(2048 * 4 * 4, 512)
@@ -157,6 +158,7 @@ class VehicleAffordanceRegressor(nn.Module):
     """
     Vehicle Affordance Regressor: lateral distance and relative angle.
     """
+
     def __init__(self):
         super(VehicleAffordanceRegressor, self).__init__()
         self.fc1 = nn.Linear(2048 * 4 * 4, 512)
@@ -174,6 +176,7 @@ class ADEncoder(nn.Module):
     """
     Autonomous Driving Encoder
     """
+
     def __init__(self):
         super(ADEncoder, self).__init__()
         self.backbone = ResNet(ResBlock, [3, 4, 6, 3], 4, 10)
@@ -182,7 +185,7 @@ class ADEncoder(nn.Module):
         self.vehicle_awareness = VehicleAffordanceRegressor()
 
     def forward(self, x):
-        embedding = self.backbone(x)            # 2048x4x4
+        embedding = self.backbone(x)  # 2048x4x4
         seg_img = self.seg(embedding)
         flatten_embedding = torch.flatten(embedding, 1)
         traffic_light_status = self.traffic_light_classifier(flatten_embedding)
