@@ -42,33 +42,34 @@ class HDF5Dataset(data.Dataset):
             self._add_data_infos(str(h5dataset_fp.resolve()), str(json_fp.resolve()))
             
     def __getitem__(self, index):
-        d = self.get_data(index)
         # get data
-        # x = self.get_data(index)
-        # if self.transform:
-        #     x = self.transform(x)
-        # else:
-        #     x = torch.from_numpy(x)
+        imgs, data = self.get_data(index)
+
+        x = np.concatenate((imgs['rgb'], imgs['depth'][:, :, np.newaxis]), axis=2)
+        if self.transform:
+            x = self.transform(x)
+        else:
+            x = torch.from_numpy(x)
 
         # # get label
-        # y = self.get_data(index)
-        # y = torch.from_numpy(y)
+        y = imgs['semantic']
+        y = torch.from_numpy(y)
         return (x, y)
 
     def __len__(self):
         return len(self.data_info)
     
     def _add_data_infos(self, file_path, json_path):
-        with h5py.File(file_path) as h5_file, open(json_path) as json_file:
-            data = json.load(json_file)
+        with h5py.File(file_path, 'r') as h5_file, open(json_path) as json_file:
+            control = json.load(json_file)
             # Walk through all groups, extracting datasets
             for ep_name, episode in h5_file.items():
                 for tname, timestamp in episode.items():
                     shapes = []
                     datas = {}
-                    for dname, data in data.items():
-                        shapes.append(data.value.shape)
-                        datas[dname] = data.values
+                    for dname, data in timestamp.items():
+                        shapes.append(data[()].shape)
+                        datas[dname] = data[()]
 
                     # if data is not loaded its cache index is -1
                     idx = -1
@@ -79,14 +80,14 @@ class HDF5Dataset(data.Dataset):
                     # type is derived from the name of the dataset; we expect the dataset
                     # name to have a name such as 'data' or 'label' to identify its type
                     # we also store the shape of the data in case we need it
-                    self.data_info.append({'file_path': file_path, 'episode': ep_name, 'timestamp': tname, 'shape': shapes, 'data': data[ep_name][tname], 'cache_idx': idx})
+                    self.data_info.append({'file_path': file_path, 'episode': ep_name, 'timestamp': tname, 'shape': shapes, 'data': control[ep_name][tname], 'cache_idx': idx})
 
     def _load_data(self, file_path, json_path):
         """Load data to the cache given the file
         path and update the cache index in the
         data_info structure.
         """
-        with h5py.File(file_path) as h5_file, open(json_path) as json_file:
+        with h5py.File(file_path, 'r') as h5_file, open(json_path) as json_file:
             data = json.load(json_file)
             # Walk through all groups, extracting datasets
             for ep_name, episode in h5_file.items():
@@ -94,8 +95,8 @@ class HDF5Dataset(data.Dataset):
                     shapes = []
                     datas = {}
                     for dname, data in data.items():
-                        shapes.append(data.value.shape)
-                        datas[dname] = data.values
+                        shapes.append(data[()].shape)
+                        datas[dname] = data[()]
 
                         # add data to the data cache and retrieve
                         # the cache index
@@ -143,8 +144,8 @@ class HDF5Dataset(data.Dataset):
         
         with h5py.File(fp, 'r') as f:
             datas = {}
-            for dname, data in f[timestamp['episode'][timestamp['timestamp']]].items():
-                datas[dname] = data.values
+            for dname, data in f[timestamp['episode']][timestamp['timestamp']].items():
+                datas[dname] = data[()]
         return datas, timestamp
 
 
@@ -152,4 +153,5 @@ if __name__ == "__main__":
     path = 'dataset'
     #f = h5py.File(path, 'r')
     #print(f['run_000_morning']['depth']['1617979592423'])
-    HDF5Dataset(path)
+    dataset = HDF5Dataset(path)
+    print(dataset[10])
