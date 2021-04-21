@@ -1,8 +1,10 @@
 import json
 from pathlib import Path
-
+import numpy as np
+import torch
 import h5py
 from torch.utils import data
+from typing import Tuple
 
 
 class HDF5Dataset(data.Dataset):
@@ -42,7 +44,13 @@ class HDF5Dataset(data.Dataset):
         for h5dataset_fp, json_fp in zip(files, data):
             self._add_data_infos(str(h5dataset_fp.resolve()), str(json_fp.resolve()))
 
-    def __getitem__(self, index):
+    def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Returns a tuple of img+depth array, semantic segmentation, traffic light status and vehicle affordances (lane
+        orientation and lane position)
+        :param index: position of element that wants to be retrieved
+        :type index: int
+        """
         # get data
         imgs, data = self.get_data(index)
 
@@ -52,10 +60,14 @@ class HDF5Dataset(data.Dataset):
         else:
             x = torch.from_numpy(x)
 
-        # # get label
-        y = imgs['semantic']
-        y = torch.from_numpy(y)
-        return (x, y)
+        # get ground truth
+        s = imgs['semantic']
+        s = torch.from_numpy(s)
+
+        tl = torch.tensor([1, 0] if data['data']['tl_state'] == 'Green' else [0, 1], dtype=torch.float32)
+        v_aff = torch.tensor([data['data']['lane_distance'], data['data']['lane_orientation']])
+
+        return x, s, tl, v_aff
 
     def __len__(self):
         return len(self.data_info)
@@ -156,8 +168,15 @@ class HDF5Dataset(data.Dataset):
 
 
 if __name__ == "__main__":
-    path = 'dataset'
+    from torch.utils.data import DataLoader
+    path = '/home/rudy/Documents/carla-dataset-runner/data/sample6'
     # f = h5py.File(path, 'r')
     # print(f['run_000_morning']['depth']['1617979592423'])
-    dataset =HDF5Dataset(path)
-print(dataset[10])
+    dataset = HDF5Dataset(path)
+    loader = DataLoader(dataset, batch_size=8)
+    for img, semantic_map, tl_status, vehicle_aff in loader:
+        print(img.shape)
+        print(semantic_map.shape)
+        print(tl_status.shape)
+        print(vehicle_aff.shape)
+        break
