@@ -73,6 +73,9 @@ class HDF5Dataset(data.Dataset):
         return len(self.data_info)
 
     def _add_data_infos(self, file_path, json_path):
+        """"Load data to the cache given a file 
+        and map them into a dictionary
+        """
         with h5py.File(file_path, 'r') as h5_file, open(json_path) as json_file:
             control = json.load(json_file)
             # Walk through all groups, extracting datasets

@@ -7,12 +7,14 @@ from torch.utils.data import DataLoader, random_split
 
 
 def train_for_classification(net, dataset, optimizer,
-                             criterion, lr_scheduler=None,
-                             epochs: int = 1,
-                             batch_size: int = 64,
-                             reports_every: int = 1,
-                             device: str = 'cuda',
-                             val_percent: float = 0.1):
+                            seg_criterion, tl_criterion, va_criterion,
+                            criterion_weights=[1, 1, 1],
+                            lr_scheduler=None,
+                            epochs: int = 1,
+                            batch_size: int = 64,
+                            reports_every: int = 1,
+                            device: str = 'cuda',
+                            val_percent: float = 0.1):
     net.to(device)
     n_val = int(len(dataset) * val_percent)
     n_train = len(dataset) - n_val
@@ -23,8 +25,8 @@ def train_for_classification(net, dataset, optimizer,
 
     tiempo_epochs = 0
     global_step = 0
-    best_acc = 0
-    train_loss, train_acc, test_acc = [], [], []
+    best_loss = 1e100
+    train_loss, train_acc, test_loss = [], [], []
 
     for e in range(1, epochs + 1):
         inicio_epoch = time.time()
@@ -34,16 +36,17 @@ def train_for_classification(net, dataset, optimizer,
         running_loss, running_acc = 0.0, 0.0
         avg_acc, avg_loss = 0, 0
 
-        for i, data in enumerate(train_loader):
-            images, labels = data
-            images, labels = images.to(device), labels.to(device)
+        for i, (x, s, tl, v_aff) in enumerate(train_loader):
+
+            x, s, tl, v_aff = x.to(device), s.to(device), tl.to(device), v_aff.to(device)
 
             # optimization step
             optimizer.zero_grad()
-            logits = net(images)
-            y_pred = logits.type(torch.DoubleTensor)  # probability distribution over classes
-            labels = labels.type(torch.LongTensor)
-            loss = criterion(y_pred, labels)
+            y = net(images)
+            l1 = seg_loss(y['segmentation'], s)
+            l2 = tl_loss(y['traffic_light_status'], tl)
+            l3 = va_loss(y['vehicle_affordances'], v_aff)
+            loss = criterion_weights[0]*l1 + criterion_weights[1]*l2 + criterion_weights[2]*l3
             loss.backward()
             optimizer.step()
 
@@ -52,21 +55,21 @@ def train_for_classification(net, dataset, optimizer,
             running_loss += loss.item()
             avg_loss = running_loss / (i + 1)
 
-            # accuracy
-            _, max_idx = torch.max(y_pred, dim=1)
-            running_acc += torch.sum(max_idx == labels).item()
+            # accuracy of traffic lights
+            _, max_idx = torch.max(y['traffic_light_status'], dim=1)
+            running_acc += torch.sum(max_idx == tl).item()
             avg_acc = running_acc / items * 100
 
             # report
             sys.stdout.write(f'\rEpoch:{e}({items}/{n_train}), '
                              + (f'lr:{lr_scheduler.get_last_lr()[0]:02.7f}, ' if lr_scheduler is not None else '')
                              + f'Loss:{avg_loss:02.5f}, '
-                             + f'Train Acc:{avg_acc:02.1f}%')
-            wandb.log({'train/loss': float(avg_loss), 'train/acc': float(avg_acc)}, step=global_step)
+                             + f'Train TL Acc:{avg_acc:02.1f}%')
+            wandb.log({'train/loss': float(avg_loss), 'train/acc TL': float(avg_acc)}, step=global_step)
             global_step += 1
 
         tiempo_epochs += time.time() - inicio_epoch
-        wandb.log({'train/loss': float(avg_loss), 'train/acc': float(avg_acc), 'epoch': e})
+        wandb.log({'train/loss': float(avg_loss), 'train/acc TL': float(avg_acc), 'epoch': e})
 
         if e % reports_every == 0:
             sys.stdout.write(', Validating...')
@@ -74,16 +77,16 @@ def train_for_classification(net, dataset, optimizer,
             train_loss.append(avg_loss)
             train_acc.append(avg_acc)
 
-            avg_acc = eval_net(device, net, val_loader)
-            test_acc.append(avg_acc)
-            sys.stdout.write(f', Val Acc:{avg_acc:02.2f}%, '
+            avg_loss = eval_net(device, net, val_loader, seg_criterion, tl_criterion, va_criterion, criterion_weights=criterion_weights)
+            test_loss.append(avg_loss)
+            sys.stdout.write(f', Val Acc:{avg_loss:02.2f}%, '
                              + f'Avg-Time:{tiempo_epochs / e:.3f}s.\n')
-            wandb.log({'val/acc': float(avg_acc)}, step=global_step)
-            wandb.log({'val/acc': float(avg_acc), 'epoch': e})
+            wandb.log({'val/acc': float(avg_loss)}, step=global_step)
+            wandb.log({'val/acc': float(avg_loss), 'epoch': e})
 
             # checkpointing
-            if avg_acc >= best_acc:
-                best_acc = avg_acc
+            if avg_loss <= best_loss:
+                best_loss = avg_loss
                 model_name = f"best_{net.__class__.__name__}_{e}.pth"
                 torch.save(net.state_dict(), model_name)
                 wandb.save(model_name)
@@ -94,21 +97,30 @@ def train_for_classification(net, dataset, optimizer,
         if lr_scheduler is not None:
             lr_scheduler.step()
 
-    return train_loss, (train_acc, test_acc)
+    return train_loss, (train_acc, test_loss)
 
 
-def eval_net(device, net, test_loader):
+def eval_net(device, net, test_loader,
+                seg_criterion, tl_criterion, va_criterion,
+                criterion_weights=[1, 1, 1]):
     net.eval()
-    running_acc = 0.0
+    running_loss = 0.0
     total_test = 0
 
-    for i, data in enumerate(test_loader):
-        images, labels = data
-        images, labels = images.to(device), labels.to(device)
-        logits = net(images.float())
-        _, max_idx = torch.max(logits, dim=1)
-        running_acc += torch.sum(max_idx == labels).item()
+    for i, (x, s, tl, v_aff) in enumerate(test_loader):
+        x, s, tl, v_aff = x.to(device), s.to(device), tl.to(device), v_aff.to(device)
+
+        l1 = seg_loss(y['segmentation'], s)
+        l2 = tl_loss(y['traffic_light_status'], tl)
+        l3 = va_loss(y['vehicle_affordances'], v_aff)
+
+        running_loss += criterion_weights[0]*l1 + criterion_weights[1]*l2 + criterion_weights[2]*l3
         total_test += len(labels)
 
-    avg_acc = (running_acc / total_test) * 100
-    return avg_acc
+    avg_loss = (running_loss / total_test) * 100
+    return avg_loss
+
+
+
+if __name__ == "__main__":
+    pass
