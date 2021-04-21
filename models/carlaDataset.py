@@ -1,9 +1,9 @@
-import h5py
-import numpy as np
-from pathlib import Path
-import torch
-from torch.utils import data
 import json
+from pathlib import Path
+
+import h5py
+from torch.utils import data
+
 
 class HDF5Dataset(data.Dataset):
     """Represents an abstract HDF5 dataset.
@@ -17,6 +17,7 @@ class HDF5Dataset(data.Dataset):
         data_cache_size: Number of HDF5 files that can be cached in the cache (default=3).
         transform: PyTorch transform to apply to every data instance (default=None).
     """
+
     def __init__(self, file_path, recursive=True, load_data=False, data_cache_size=3, transform=None):
         super().__init__()
         self.data_info = []
@@ -27,20 +28,20 @@ class HDF5Dataset(data.Dataset):
 
         # Search for all h5 files
         p = Path(file_path)
-        assert(p.is_dir())
+        assert (p.is_dir())
         if recursive:
             files = sorted(p.glob('**/*.hdf5'))
             data = sorted(p.glob('**/*.json'))
         else:
             files = sorted(p.glob('*.hdf5'))
             data = sorted(p.glob('*.json'))
-        
+
         if len(files) < 1 or len(data) != len(files):
             raise RuntimeError('No hdf5 datasets found')
 
         for h5dataset_fp, json_fp in zip(files, data):
             self._add_data_infos(str(h5dataset_fp.resolve()), str(json_fp.resolve()))
-            
+
     def __getitem__(self, index):
         # get data
         imgs, data = self.get_data(index)
@@ -58,7 +59,7 @@ class HDF5Dataset(data.Dataset):
 
     def __len__(self):
         return len(self.data_info)
-    
+
     def _add_data_infos(self, file_path, json_path):
         with h5py.File(file_path, 'r') as h5_file, open(json_path) as json_file:
             control = json.load(json_file)
@@ -76,11 +77,13 @@ class HDF5Dataset(data.Dataset):
                     if self.load_data:
                         # add data to the data cache
                         idx = self._add_to_cache(datas, file_path)
-                        
+
                     # type is derived from the name of the dataset; we expect the dataset
                     # name to have a name such as 'data' or 'label' to identify its type
                     # we also store the shape of the data in case we need it
-                    self.data_info.append({'file_path': file_path, 'episode': ep_name, 'timestamp': tname, 'shape': shapes, 'data': control[ep_name][tname], 'cache_idx': idx})
+                    self.data_info.append(
+                        {'file_path': file_path, 'episode': ep_name, 'timestamp': tname, 'shape': shapes,
+                         'data': control[ep_name][tname], 'cache_idx': idx})
 
     def _load_data(self, file_path, json_path):
         """Load data to the cache given the file
@@ -103,7 +106,7 @@ class HDF5Dataset(data.Dataset):
                         idx = self._add_to_cache(datas, file_path)
 
                         # find the beginning index of the hdf5 file we are looking for
-                        file_idx = next(i for i,v in enumerate(self.data_info) if v['file_path'] == file_path)
+                        file_idx = next(i for i, v in enumerate(self.data_info) if v['file_path'] == file_path)
 
                         # the data info should have the same index since we loaded it in the same way
                         self.data_info[file_idx + idx]['cache_idx'] = idx
@@ -115,7 +118,10 @@ class HDF5Dataset(data.Dataset):
             removal_keys.remove(file_path)
             self.data_cache.pop(removal_keys[0])
             # remove invalid cache_idx
-            self.data_info = [{'file_path': di['file_path'], 'episode': di['episode'], 'timestamp': di['timestamp'], 'shape': di['shape'], 'data': di['data'], 'cache_idx': -1} if di['file_path'] == removal_keys[0] else di for di in self.data_info]
+            self.data_info = [{'file_path': di['file_path'], 'episode': di['episode'], 'timestamp': di['timestamp'],
+                               'shape': di['shape'], 'data': di['data'], 'cache_idx': -1} if di['file_path'] ==
+                                                                                             removal_keys[0] else di for
+                              di in self.data_info]
 
     def _add_to_cache(self, data, file_path):
         """Adds data to the cache and returns its index. There is one cache
@@ -141,7 +147,7 @@ class HDF5Dataset(data.Dataset):
                 # get new cache_idx assigned by _load_data_info
                 cache_idx = self.data_info[i]['cache_idx']
             return self.data_cache[fp][cache_idx], self.data_info[i]
-        
+
         with h5py.File(fp, 'r') as f:
             datas = {}
             for dname, data in f[timestamp['episode']][timestamp['timestamp']].items():
@@ -151,7 +157,7 @@ class HDF5Dataset(data.Dataset):
 
 if __name__ == "__main__":
     path = 'dataset'
-    #f = h5py.File(path, 'r')
-    #print(f['run_000_morning']['depth']['1617979592423'])
-    dataset = HDF5Dataset(path)
-    print(dataset[10])
+    # f = h5py.File(path, 'r')
+    # print(f['run_000_morning']['depth']['1617979592423'])
+    dataset =HDF5Dataset(path)
+print(dataset[10])
