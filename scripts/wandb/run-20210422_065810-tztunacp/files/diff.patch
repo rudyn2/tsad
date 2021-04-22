@@ -1,0 +1,170 @@
+diff --git a/models/ADEncoder.py b/models/ADEncoder.py
+index a22482c..471986a 100644
+--- a/models/ADEncoder.py
++++ b/models/ADEncoder.py
+@@ -200,6 +200,6 @@ class ADEncoder(nn.Module):
+ 
+ 
+ if __name__ == '__main__':
+-    sample_input = torch.rand((1, 4, 288, 288))
+-    model = ADEncoder()
++    sample_input = torch.rand((1, 4, 288, 288)).to('cuda')
++    model = ADEncoder().to('cuda')
+     y = model(sample_input)
+diff --git a/models/__init__.py b/models/__init__.py
+index e69de29..22aa9c8 100644
+--- a/models/__init__.py
++++ b/models/__init__.py
+@@ -0,0 +1,3 @@
++from .ADEncoder import ADEncoder
++from .carlaDataset import HDF5Dataset
++from .losses import FocalLoss
+\ No newline at end of file
+diff --git a/models/carlaDataset.py b/models/carlaDataset.py
+index 81662d6..a22931a 100644
+--- a/models/carlaDataset.py
++++ b/models/carlaDataset.py
+@@ -53,21 +53,21 @@ class HDF5Dataset(data.Dataset):
+         """
+         # get data
+         imgs, data = self.get_data(index)
+-
+         x = np.concatenate((imgs['rgb'], imgs['depth'][:, :, np.newaxis]), axis=2)
++        x = np.transpose(x, axes=[2, 0, 1])
+         if self.transform:
+             x = self.transform(x)
+         else:
+             x = torch.from_numpy(x)
+ 
+         # get ground truth
+-        s = imgs['semantic']
++        s = imgs['semantic'][np.newaxis, :, :] - 1
+         s = torch.from_numpy(s)
+ 
+         tl = torch.tensor([1, 0] if data['data']['tl_state'] == 'Green' else [0, 1], dtype=torch.float32)
+         v_aff = torch.tensor([data['data']['lane_distance'], data['data']['lane_orientation']])
+ 
+-        return x, s, tl, v_aff
++        return x.float(), s.int(), tl.float(), v_aff.float()
+ 
+     def __len__(self):
+         return len(self.data_info)
+@@ -172,7 +172,7 @@ class HDF5Dataset(data.Dataset):
+ 
+ if __name__ == "__main__":
+     from torch.utils.data import DataLoader
+-    path = '/home/rudy/Documents/carla-dataset-runner/data/sample6'
++    path = '../dataset'
+     # f = h5py.File(path, 'r')
+     # print(f['run_000_morning']['depth']['1617979592423'])
+     dataset = HDF5Dataset(path)
+diff --git a/models/losses.py b/models/losses.py
+index 1c78424..87dbf65 100644
+--- a/models/losses.py
++++ b/models/losses.py
+@@ -91,7 +91,7 @@ class FocalLoss(nn.Module):
+ 
+ 
+ if __name__ == '__main__':
+-    from resnet50 import ADEncoder
++    from ADEncoder import ADEncoder
+     n_batch = 2
+     sample_input = torch.rand((n_batch, 4, 288, 288))
+     model = ADEncoder()
+@@ -104,7 +104,7 @@ if __name__ == '__main__':
+     tl_loss_weights = torch.tensor([0.2, 0.8])
+     tl_loss = nn.BCEWithLogitsLoss(pos_weight=tl_loss_weights)
+     va_loss = nn.MSELoss()
+-
++    print(expected_seg_output.max())
+     l1 = seg_loss(y['segmentation'], expected_seg_output)
+     l2 = tl_loss(y['traffic_light_status'], expected_tl_output)
+     l3 = va_loss(y['vehicle_affordances'], expected_va_output)
+\ No newline at end of file
+diff --git a/requirements.txt b/requirements.txt
+index b2973f5..45f7648 100644
+--- a/requirements.txt
++++ b/requirements.txt
+@@ -1,4 +1,5 @@
+ numpy==1.20.2
+ Pillow==8.2.0
+ torch==1.8.1
+-torchvision==0.9.1
+\ No newline at end of file
++torchvision==0.9.1
++wandb-0.10.27
+\ No newline at end of file
+diff --git a/scripts/train.py b/scripts/train.py
+index b48f31d..14b1825 100644
+--- a/scripts/train.py
++++ b/scripts/train.py
+@@ -20,8 +20,8 @@ def train_for_classification(net, dataset, optimizer,
+     n_train = len(dataset) - n_val
+     train, val = random_split(dataset, [n_train, n_val])
+     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
+-    val_loader = DataLoader(val, batch_size=int(batch_size / 8), shuffle=False, num_workers=2, pin_memory=True,
+-                            drop_last=True)
++    #val_loader = DataLoader(val, batch_size=int(batch_size / 8), shuffle=False, num_workers=2, pin_memory=True, drop_last=True)
++    val_loader = DataLoader(val, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True, drop_last=True)
+ 
+     tiempo_epochs = 0
+     global_step = 0
+@@ -39,10 +39,10 @@ def train_for_classification(net, dataset, optimizer,
+         for i, (x, s, tl, v_aff) in enumerate(train_loader):
+ 
+             x, s, tl, v_aff = x.to(device), s.to(device), tl.to(device), v_aff.to(device)
+-
++            
+             # optimization step
+             optimizer.zero_grad()
+-            y = net(images)
++            y = net(x)
+             l1 = seg_loss(y['segmentation'], s)
+             l2 = tl_loss(y['traffic_light_status'], tl)
+             l3 = va_loss(y['vehicle_affordances'], v_aff)
+@@ -123,4 +123,42 @@ def eval_net(device, net, test_loader,
+ 
+ 
+ if __name__ == "__main__":
+-    pass
+\ No newline at end of file
++    import sys
++    import torch.nn as nn
++    import torch.optim as optim
++    from pathlib import Path
++    sys.path.append('..')
++    from models import ADEncoder
++    from models import HDF5Dataset
++    from models import FocalLoss
++
++    use_cuda = torch.cuda.is_available()
++    device = torch.device("cuda" if use_cuda else "cpu")
++    torch.manual_seed(0)
++    if use_cuda:
++        torch.cuda.manual_seed(0)
++    
++    #wandb.init(config=args, project="my-project")
++    wandb.init(project="tsad")
++    wandb.config["more"] = "custom"
++    
++    path = '../dataset'
++    dataset = HDF5Dataset(path)
++    model = ADEncoder().to(device)
++
++    seg_loss = FocalLoss(apply_nonlin=torch.sigmoid)
++    tl_loss_weights = torch.tensor([0.2, 0.8]).to(device)
++    tl_loss = nn.BCEWithLogitsLoss(pos_weight=tl_loss_weights)
++    va_loss = nn.MSELoss()
++
++    optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
++
++    train_for_classification(model, dataset, optimizer,
++                            seg_loss, tl_loss, va_loss,
++                            criterion_weights=[1, 1, 1],
++                            lr_scheduler=None,
++                            epochs = 1,
++                            batch_size = 1,
++                            reports_every = 1,
++                            device = device,
++                            val_percent = 0.1)
+\ No newline at end of file

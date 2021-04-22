@@ -14,8 +14,7 @@ def train_for_classification(net, dataset, optimizer,
                             batch_size: int = 64,
                             reports_every: int = 1,
                             device: str = 'cuda',
-                            val_percent: float = 0.1,
-                            use_wandb= False):
+                            val_percent: float = 0.1):
     net.to(device)
     n_val = int(len(dataset) * val_percent)
     n_train = len(dataset) - n_val
@@ -66,13 +65,11 @@ def train_for_classification(net, dataset, optimizer,
                              + (f'lr:{lr_scheduler.get_last_lr()[0]:02.7f}, ' if lr_scheduler is not None else '')
                              + f'Loss:{avg_loss:02.5f}, '
                              + f'Train TL Acc:{avg_acc:02.1f}%')
-            if use_wandb:
-                wandb.log({'train/loss': float(avg_loss), 'train/acc TL': float(avg_acc)}, step=global_step)
+            wandb.log({'train/loss': float(avg_loss), 'train/acc TL': float(avg_acc)}, step=global_step)
             global_step += 1
 
         tiempo_epochs += time.time() - inicio_epoch
-        if use_wandb:
-            wandb.log({'train/loss': float(avg_loss), 'train/acc TL': float(avg_acc), 'epoch': e})
+        wandb.log({'train/loss': float(avg_loss), 'train/acc TL': float(avg_acc), 'epoch': e})
 
         if e % reports_every == 0:
             sys.stdout.write(', Validating...')
@@ -84,17 +81,15 @@ def train_for_classification(net, dataset, optimizer,
             test_loss.append(avg_loss)
             sys.stdout.write(f', Val Acc:{avg_loss:02.2f}%, '
                              + f'Avg-Time:{tiempo_epochs / e:.3f}s.\n')
-            if use_wandb:
-                wandb.log({'val/acc': float(avg_loss)}, step=global_step)
-                wandb.log({'val/acc': float(avg_loss), 'epoch': e})
+            wandb.log({'val/acc': float(avg_loss)}, step=global_step)
+            wandb.log({'val/acc': float(avg_loss), 'epoch': e})
 
             # checkpointing
             if avg_loss <= best_loss:
                 best_loss = avg_loss
                 model_name = f"best_{net.__class__.__name__}_{e}.pth"
                 torch.save(net.state_dict(), model_name)
-                if use_wandb:
-                    wandb.save(model_name)
+                wandb.save(model_name)
 
         else:
             sys.stdout.write('\n')
@@ -144,8 +139,8 @@ if __name__ == "__main__":
         torch.cuda.manual_seed(0)
     
     #wandb.init(config=args, project="my-project")
-    #wandb.init(project="tsad")
-    #wandb.config["more"] = "custom"
+    wandb.init(project="tsad")
+    wandb.config["more"] = "custom"
     
     path = '../dataset'
     dataset = HDF5Dataset(path)

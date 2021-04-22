@@ -1,0 +1,24 @@
+{
+    "os": "Linux-5.4.0-67-generic-x86_64-with-glibc2.27",
+    "python": "3.9.4",
+    "heartbeatAt": "2021-04-22T10:58:11.288003",
+    "startedAt": "2021-04-22T10:58:10.268208",
+    "docker": null,
+    "gpu": "GeForce GTX 1060 6GB",
+    "gpu_count": 1,
+    "cpu_count": 4,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "/home/johnny/Documentos/Projects/tsad/scripts/train.py",
+    "codePath": "scripts/train.py",
+    "git": {
+        "remote": "git@github.com:rudyn2/tsad.git",
+        "commit": "7f51ea3fba2b1a30d67a21d28dad5b63a62daf5c"
+    },
+    "email": "jonathan.espinola@ug.uchile.cl",
+    "root": "/home/johnny/Documentos/Projects/tsad",
+    "host": "johnny-System-Product-Name",
+    "username": "johnny",
+    "executable": "/home/johnny/anaconda3/envs/tsad/bin/python"
+}

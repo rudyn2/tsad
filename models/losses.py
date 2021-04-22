@@ -91,7 +91,7 @@ class FocalLoss(nn.Module):
 
 
 if __name__ == '__main__':
-    from resnet50 import ADEncoder
+    from ADEncoder import ADEncoder
     n_batch = 2
     sample_input = torch.rand((n_batch, 4, 288, 288))
     model = ADEncoder()
@@ -104,7 +104,7 @@ if __name__ == '__main__':
     tl_loss_weights = torch.tensor([0.2, 0.8])
     tl_loss = nn.BCEWithLogitsLoss(pos_weight=tl_loss_weights)
     va_loss = nn.MSELoss()
-
+    print(expected_seg_output.max())
     l1 = seg_loss(y['segmentation'], expected_seg_output)
     l2 = tl_loss(y['traffic_light_status'], expected_tl_output)
     l3 = va_loss(y['vehicle_affordances'], expected_va_output)

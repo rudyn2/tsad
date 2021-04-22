@@ -200,6 +200,6 @@ class ADEncoder(nn.Module):
 
 
 if __name__ == '__main__':
-    sample_input = torch.rand((1, 4, 288, 288))
-    model = ADEncoder()
+    sample_input = torch.rand((1, 4, 288, 288)).to('cuda')
+    model = ADEncoder().to('cuda')
     y = model(sample_input)
