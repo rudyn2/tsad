@@ -96,7 +96,7 @@ def train_for_classification(net, dataset, optimizer,
             test_loss.append([avg_tl_acc, avg_seg_acc, avg_va_loss])
             sys.stdout.write(f', Val TL Acc:{avg_tl_acc:02.2f}%, '
                              + f'Val SEG Acc:{avg_seg_acc:02.2f}%, '
-                             + f'Val VA Loss:{avg_va_loss:02.5f}%, '
+                             + f'Val VA Loss:{avg_va_loss:02.5f}, '
                              + f'Avg-Time:{tiempo_epochs / e:.3f}s.\n')
             if use_wandb:
                 wandb.log({'val/acc TL': float(avg_tl_acc), 'val/acc SEG': float(avg_seg_acc), 'val/loss VA': float(avg_va_loss)}, step=global_step)
@@ -181,7 +181,7 @@ if __name__ == "__main__":
     tl_loss = nn.BCEWithLogitsLoss(pos_weight=tl_loss_weights)
     va_loss = nn.MSELoss()                  # esta explotando
 
-    optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.9)
+    optimizer = optim.Adam(model.parameters(), lr=0.0001)
 
     train_for_classification(model, dataset, optimizer,
                             seg_loss, tl_loss, va_loss,

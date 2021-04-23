@@ -27,6 +27,7 @@ class HDF5Dataset(data.Dataset):
         self.data_cache_size = data_cache_size
         self.transform = transform
         self.load_data = load_data
+        self.lengths = {}
 
         # Search for all h5 files
         p = Path(file_path)
@@ -78,9 +79,11 @@ class HDF5Dataset(data.Dataset):
         """
         with h5py.File(file_path, 'r') as h5_file, open(json_path) as json_file:
             control = json.load(json_file)
+            count = 0
             # Walk through all groups, extracting datasets
             for ep_name, episode in h5_file.items():
                 for tname, timestamp in episode.items():
+                    count += 1
                     shapes = []
                     datas = {}
                     for dname, data in timestamp.items():
@@ -97,46 +100,49 @@ class HDF5Dataset(data.Dataset):
                     # name to have a name such as 'data' or 'label' to identify its type
                     # we also store the shape of the data in case we need it
                     self.data_info.append(
-                        {'file_path': file_path, 'episode': ep_name, 'timestamp': tname, 'shape': shapes,
+                        {'file_path': file_path, 'json_path': json_path, 'episode': ep_name, 'timestamp': tname, 'shape': shapes,
                          'data': control[ep_name][tname], 'cache_idx': idx})
+            self.lengths[file_path] = {
+                'last': idx,
+                'count': count,
+                'first': idx - count + 1
+            }
 
-    def _load_data(self, file_path, json_path):
+
+    def _load_data(self, index, file_path, json_path):
         """Load data to the cache given the file
         path and update the cache index in the
         data_info structure.
         """
-        with h5py.File(file_path, 'r') as h5_file, open(json_path) as json_file:
-            data = json.load(json_file)
+        # Empty cache
+        self.data_cache = {}
+        with h5py.File(file_path, 'r') as h5_file:
+            # Find index to start saving in cache
+            if self.lengths[file_path]['count'] < self.data_cache_size:
+                start_ = -1
+            else:
+                start_ = min(self.lengths[file_path]['count'] - self.data_cache_size, self.lengths[file_path]['count'] - (self.lengths[file_path]['last'] - index))
+            
             # Walk through all groups, extracting datasets
+            count = 0
             for ep_name, episode in h5_file.items():
                 for tname, timestamp in episode.items():
-                    shapes = []
-                    datas = {}
-                    for dname, data in data.items():
-                        shapes.append(data[()].shape)
-                        datas[dname] = data[()]
-
+                    if count >= start_:
+                        shapes = []
+                        datas = {}
+                        for dname, data in timestamp.items():
+                            shapes.append(data[()].shape)
+                            datas[dname] = data[()]
                         # add data to the data cache and retrieve
                         # the cache index
                         idx = self._add_to_cache(datas, file_path)
 
                         # find the beginning index of the hdf5 file we are looking for
-                        file_idx = next(i for i, v in enumerate(self.data_info) if v['file_path'] == file_path)
+                        file_idx = self.lengths[file_path]['first']
 
                         # the data info should have the same index since we loaded it in the same way
                         self.data_info[file_idx + idx]['cache_idx'] = idx
-
-        # remove an element from data cache if size was exceeded
-        if len(self.data_cache) > self.data_cache_size:
-            # remove one item from the cache at random
-            removal_keys = list(self.data_cache)
-            removal_keys.remove(file_path)
-            self.data_cache.pop(removal_keys[0])
-            # remove invalid cache_idx
-            self.data_info = [{'file_path': di['file_path'], 'episode': di['episode'], 'timestamp': di['timestamp'],
-                               'shape': di['shape'], 'data': di['data'], 'cache_idx': -1} if di['file_path'] ==
-                                                                                             removal_keys[0] else di for
-                              di in self.data_info]
+                    count += 1
 
     def _add_to_cache(self, data, file_path):
         """Adds data to the cache and returns its index. There is one cache
@@ -144,6 +150,8 @@ class HDF5Dataset(data.Dataset):
         """
         if file_path not in self.data_cache:
             self.data_cache[file_path] = [data]
+        elif len(self.data_cache[file_path]) >= self.data_cache_size:
+            return -1
         else:
             self.data_cache[file_path].append(data)
         return len(self.data_cache[file_path]) - 1
@@ -156,9 +164,10 @@ class HDF5Dataset(data.Dataset):
         timestamp = self.data_info[i]
         cache_idx = timestamp['cache_idx']
         fp = timestamp['file_path']
+        jp = timestamp['json_path']
         if self.load_data:
-            if fp not in self.data_cache:
-                self._load_data(fp)
+            if fp not in self.data_cache or cache_idx == -1:
+                self._load_data(cache_idx, fp, jp)
                 # get new cache_idx assigned by _load_data_info
                 cache_idx = self.data_info[i]['cache_idx']
             return self.data_cache[fp][cache_idx], self.data_info[i]
@@ -172,14 +181,24 @@ class HDF5Dataset(data.Dataset):
 
 if __name__ == "__main__":
     from torch.utils.data import DataLoader
+    import time
+    import numpy
     path = '../dataset'
     # f = h5py.File(path, 'r')
     # print(f['run_000_morning']['depth']['1617979592423'])
-    dataset = HDF5Dataset(path)
-    loader = DataLoader(dataset, batch_size=8)
-    for img, semantic_map, tl_status, vehicle_aff in loader:
-        print(img.shape)
-        print(semantic_map.shape)
-        print(tl_status.shape)
-        print(vehicle_aff.shape)
-        break
+    tic = time.time()
+    load_data = False
+    size = 500
+    dataset = HDF5Dataset(path, load_data=load_data, data_cache_size=500)
+    if load_data:
+        print("Cantidad de imagenes en cache: ", len(dataset.data_cache['/home/johnny/Documentos/Projects/tsad/dataset/sample6.hdf5']))
+    for rand_idx in np.random.randint(250, size=size):
+        dataset[rand_idx]
+    print("Tiempo de carga: ", time.time() - tic)
+    #loader = DataLoader(dataset, batch_size=8)
+    #for img, semantic_map, tl_status, vehicle_aff in loader:
+    #    print(img.shape)
+    #    print(semantic_map.shape)
+    #    print(tl_status.shape)
+    #    print(vehicle_aff.shape)
+    #    break
