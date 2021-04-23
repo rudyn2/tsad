@@ -65,9 +65,9 @@ class HDF5Dataset(data.Dataset):
 
         # get ground truth
         s = imgs['semantic'][np.newaxis, :, :] - 1
-        s = torch.from_numpy(s).int()
+        s = torch.from_numpy(s).type(torch.uint8)
 
-        tl = torch.tensor([1, 0] if data['data']['tl_state'] == 'Green' else [0, 1]).int()
+        tl = torch.tensor([1, 0] if data['data']['tl_state'] == 'Green' else [0, 1]).type(torch.uint8)
         v_aff = torch.tensor([data['data']['lane_distance'], data['data']['lane_orientation']]).float()
 
         return x, s, tl, v_aff
