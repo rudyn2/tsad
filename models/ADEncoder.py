@@ -1,5 +1,7 @@
 import torch
 import torch.nn as nn
+import pytorch_memlab
+
 
 
 class ResBlock(nn.Module):
@@ -61,7 +63,7 @@ class ResNet(nn.Module):
         self.layer4 = self._make_layer(
             res_block, layers[3], inter_channels=512, stride=(2, 2)
         )
-
+        self.reduce_channels_conv = nn.Conv2d(2048, 512, kernel_size=(3, 3), stride=(1, 1), padding=(2, 2))
         self.avgpool = nn.AdaptiveAvgPool2d((4, 4))
         self.fc = nn.Linear(512 * 4, num_classes)
 
@@ -74,6 +76,7 @@ class ResNet(nn.Module):
         x = self.layer2(x)
         x = self.layer3(x)
         x = self.layer4(x)
+        x = self.reduce_channels_conv(x)
         x = self.avgpool(x)
         # embedding = x
         # x = torch.flatten(x, 1)
@@ -143,7 +146,7 @@ class TrafficLightClassifier(nn.Module):
 
     def __init__(self):
         super(TrafficLightClassifier, self).__init__()
-        self.fc1 = nn.Linear(2048 * 4 * 4, 512)
+        self.fc1 = nn.Linear(512 * 4 * 4, 512)
         self.relu = nn.ReLU()
         self.fc2 = nn.Linear(512, 2)
 
@@ -159,9 +162,12 @@ class VehicleAffordanceRegressor(nn.Module):
     Vehicle Affordance Regressor: lateral distance and relative angle.
     """
 
+    # LOWER_BOUND = torch.tensor([-5, -90]).to('cuda' if torch.cuda.is_available() else 'cpu')
+    # UPPER_BOUND = torch.tensor([5, 90]).to('cuda' if torch.cuda.is_available() else 'cpu')
+
     def __init__(self):
         super(VehicleAffordanceRegressor, self).__init__()
-        self.fc1 = nn.Linear(2048 * 4 * 4, 512)
+        self.fc1 = nn.Linear(512 * 4 * 4, 512)
         self.relu = nn.ReLU()
         self.fc2 = nn.Linear(512, 2)
 
@@ -169,6 +175,7 @@ class VehicleAffordanceRegressor(nn.Module):
         x = self.fc1(x)
         x = self.relu(x)
         x = self.fc2(x)
+        # x = torch.max(torch.min(x, self.UPPER_BOUND), self.LOWER_BOUND)
         return x
 
 
@@ -180,12 +187,13 @@ class ADEncoder(nn.Module):
     def __init__(self):
         super(ADEncoder, self).__init__()
         self.backbone = ResNet(ResBlock, [3, 4, 6, 3], 4, 10)
-        self.seg = ImageSegmentationBranch(2048, 22)
+        self.seg = ImageSegmentationBranch(512, 22)
         self.traffic_light_classifier = TrafficLightClassifier()
         self.vehicle_awareness = VehicleAffordanceRegressor()
 
+    # @pytorch_memlab.profile
     def forward(self, x):
-        embedding = self.backbone(x)  # 2048x4x4
+        embedding = self.backbone(x)  # 512x4x4
         seg_img = self.seg(embedding)
         flatten_embedding = torch.flatten(embedding, 1)
         traffic_light_status = self.traffic_light_classifier(flatten_embedding)
@@ -198,8 +206,15 @@ class ADEncoder(nn.Module):
         x = self.backbone(x)
         return x
 
+    def __str__(self):
+        return ""
+
+    def __repr__(self):
+        return ""
+
 
 if __name__ == '__main__':
+    torch.cuda.empty_cache()
     sample_input = torch.rand((1, 4, 288, 288)).to('cuda')
     model = ADEncoder().to('cuda')
     y = model(sample_input)

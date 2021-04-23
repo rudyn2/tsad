@@ -5,6 +5,8 @@ import torch
 import h5py
 from torch.utils import data
 from typing import Tuple
+# from pytorch_memlab import profile
+import memory_profiler
 
 
 class HDF5Dataset(data.Dataset):
@@ -44,6 +46,7 @@ class HDF5Dataset(data.Dataset):
         for h5dataset_fp, json_fp in zip(files, data):
             self._add_data_infos(str(h5dataset_fp.resolve()), str(json_fp.resolve()))
 
+    # @memory_profiler.profile
     def __getitem__(self, index: int) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Returns a tuple of img+depth array, semantic segmentation, traffic light status and vehicle affordances (lane
@@ -64,7 +67,7 @@ class HDF5Dataset(data.Dataset):
         s = imgs['semantic'][np.newaxis, :, :] - 1
         s = torch.from_numpy(s)
 
-        tl = torch.tensor([1, 0] if data['data']['tl_state'] == 'Green' else [0, 1], dtype=torch.float32)
+        tl = torch.tensor([1, 0] if data['data']['tl_state'] == 'Green' else [0, 1], dtype=torch.int32)
         v_aff = torch.tensor([data['data']['lane_distance'], data['data']['lane_orientation']])
 
         return x.float(), s.int(), tl.float(), v_aff.float()
@@ -172,14 +175,22 @@ class HDF5Dataset(data.Dataset):
 
 if __name__ == "__main__":
     from torch.utils.data import DataLoader
+    from models import ADEncoder
+    from pytorch_memlab import MemReporter
     path = '../dataset'
     # f = h5py.File(path, 'r')
     # print(f['run_000_morning']['depth']['1617979592423'])
     dataset = HDF5Dataset(path)
-    loader = DataLoader(dataset, batch_size=8)
+    model = ADEncoder()
+    model.to('cuda')
+    loader = DataLoader(dataset, batch_size=32, pin_memory=True)
+    reporter = MemReporter()
+    print("Before")
+    reporter.report()
+
     for img, semantic_map, tl_status, vehicle_aff in loader:
-        print(img.shape)
-        print(semantic_map.shape)
-        print(tl_status.shape)
-        print(vehicle_aff.shape)
+        img, semantic_map, tl_status, vehicle_aff = img.to('cuda'), semantic_map.to('cuda'), tl_status.to('cuda'), vehicle_aff.to('cuda')
+        reporter.report()
+        y = model(img)
+        reporter.report()
         break
