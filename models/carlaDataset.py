@@ -174,14 +174,12 @@ class HDF5Dataset(data.Dataset):
 if __name__ == "__main__":
     from torch.utils.data import DataLoader
     from models import ADEncoder
-    from pytorch_memlab import MemReporter
+
     path = '../dataset'
-    # f = h5py.File(path, 'r')
-    # print(f['run_000_morning']['depth']['1617979592423'])
     dataset = HDF5Dataset(path)
     model = ADEncoder()
     model.to('cuda')
-    loader = DataLoader(dataset, batch_size=32, pin_memory=True)
+    loader = DataLoader(dataset, batch_size=3, pin_memory=True)
 
     for img, semantic_map, tl_status, vehicle_aff in loader:
         img, semantic_map, tl_status, vehicle_aff = img.to('cuda'), semantic_map.to('cuda'), tl_status.to('cuda'), vehicle_aff.to('cuda')

@@ -65,7 +65,7 @@ def train_for_classification(net, dataset, optimizer,
 
             # accuracy of traffic lights
             _, max_idx = torch.max(y['traffic_light_status'], dim=1)
-            running_tl_acc += torch.sum(max_idx == tl).item()
+            running_tl_acc += torch.sum(max_idx == torch.argmax(tl, dim=1)).item()
             avg_tl_acc = running_tl_acc / items * 100
             # accuracy semantic
             _, max_idx = torch.max(y['segmentation'], dim=1)
@@ -168,9 +168,9 @@ if __name__ == "__main__":
 
     sys.path.append('..')
     sys.path.append('.')
-    from models import ADEncoder
-    from models import HDF5Dataset
-    from models import FocalLoss
+    from models.ADEncoder import ADEncoder
+    from models.carlaDataset import HDF5Dataset
+    from models.losses import FocalLoss
     import argparse
 
     parser = argparse.ArgumentParser(description="Train model utility",
