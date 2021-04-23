@@ -1,5 +1,6 @@
 numpy==1.20.2
 Pillow==8.2.0
-torch==1.8.1
-torchvision==0.9.1
-wandb-0.10.27
+wandb
+h5py
+memory_profiler
+pytorch-memlab==0.2.3

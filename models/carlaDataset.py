@@ -5,8 +5,6 @@ import torch
 import h5py
 from torch.utils import data
 from typing import Tuple
-# from pytorch_memlab import profile
-import memory_profiler
 
 
 class HDF5Dataset(data.Dataset):
@@ -67,7 +65,7 @@ class HDF5Dataset(data.Dataset):
         s = imgs['semantic'][np.newaxis, :, :] - 1
         s = torch.from_numpy(s).type(torch.uint8)
 
-        tl = torch.tensor([1, 0] if data['data']['tl_state'] == 'Green' else [0, 1]).type(torch.uint8)
+        tl = torch.tensor([1, 0] if data['data']['tl_state'] == 'Green' else [0, 1], dtype=torch.float16)
         v_aff = torch.tensor([data['data']['lane_distance'], data['data']['lane_orientation']]).float()
 
         return x, s, tl, v_aff
@@ -184,13 +182,8 @@ if __name__ == "__main__":
     model = ADEncoder()
     model.to('cuda')
     loader = DataLoader(dataset, batch_size=32, pin_memory=True)
-    reporter = MemReporter()
-    print("Before")
-    reporter.report()
 
     for img, semantic_map, tl_status, vehicle_aff in loader:
         img, semantic_map, tl_status, vehicle_aff = img.to('cuda'), semantic_map.to('cuda'), tl_status.to('cuda'), vehicle_aff.to('cuda')
-        reporter.report()
         y = model(img)
-        reporter.report()
         break

@@ -3,11 +3,8 @@ import time
 import torch
 import wandb
 from torch.utils.data import DataLoader, random_split
-import pytorch_memlab
-from pytorch_memlab import MemReporter
 
 
-# @pytorch_memlab.profile
 def train_for_classification(net, dataset, optimizer,
                              seg_criterion, tl_criterion, va_criterion,
                              criterion_weights=(1 / 3, 1 / 3, 1 / 3),
@@ -26,7 +23,8 @@ def train_for_classification(net, dataset, optimizer,
     n_train = len(dataset) - n_val
     train, val = random_split(dataset, [n_train, n_val])
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=False)
-    # val_loader = DataLoader(val, batch_size=int(batch_size / 8), shuffle=False, num_workers=2, pin_memory=True, drop_last=True)
+    # val_loader = DataLoader(val, batch_size=int(batch_size / 8),
+    # shuffle=False, num_workers=2, pin_memory=True, drop_last=True)
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True, drop_last=True)
 
     tiempo_epochs = 0
@@ -117,7 +115,7 @@ def train_for_classification(net, dataset, optimizer,
             # checkpointing
             if avg_loss <= best_loss:
                 best_loss = avg_loss
-                model_name = f"best_{net.__class__.__name__}_{e}.pth"
+                model_name = f"best_{net.__class__.__name__}.pth"
                 torch.save(net.state_dict(), model_name)
                 if use_wandb:
                     wandb.save(model_name)
@@ -169,9 +167,16 @@ if __name__ == "__main__":
     import torch.optim as optim
 
     sys.path.append('..')
+    sys.path.append('.')
     from models import ADEncoder
     from models import HDF5Dataset
     from models import FocalLoss
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Train model utility",
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--batch_size', default=1, type=int, help='Batch size.')
+    args = parser.parse_args()
 
     torch.cuda.empty_cache()
     use_cuda = torch.cuda.is_available()
@@ -200,8 +205,8 @@ if __name__ == "__main__":
                              seg_loss, tl_loss, va_loss,
                              criterion_weights=[1, 1, 1],
                              lr_scheduler=None,
-                             epochs=1,
-                             batch_size=1,
+                             epochs=5,
+                             batch_size=args.batch_size,
                              reports_every=1,
                              device=device,
                              val_percent=0.1,

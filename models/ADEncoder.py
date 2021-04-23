@@ -1,7 +1,5 @@
 import torch
 import torch.nn as nn
-import pytorch_memlab
-
 
 
 class ResBlock(nn.Module):
