@@ -22,7 +22,7 @@ def train_for_classification(net, dataset, optimizer,
     n_val = int(len(dataset) * val_percent)
     n_train = len(dataset) - n_val
     train, val = random_split(dataset, [n_train, n_val])
-    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=False)
+    train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
     # val_loader = DataLoader(val, batch_size=int(batch_size / 8),
     # shuffle=False, num_workers=2, pin_memory=True, drop_last=True)
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True, drop_last=True)
@@ -78,10 +78,10 @@ def train_for_classification(net, dataset, optimizer,
             # report
             sys.stdout.write(f'\rEpoch:{e}({items}/{n_train}), '
                              + (f'lr:{lr_scheduler.get_last_lr()[0]:02.7f}, ' if lr_scheduler is not None else '')
-                             + f'Loss:{avg_loss:02.5f}, '
-                             + f'Train SEG Acc:{avg_seg_acc:02.1f}%, '
-                             + f'Train TL Acc:{avg_tl_acc:02.1f}%, '
-                             + f'Train VA Loss: {avg_va_loss:02.5f}')
+                             + f'Train[Loss:{avg_loss:02.5f}, '
+                             + f'SEG Acc:{avg_seg_acc:02.1f}%, '
+                             + f'TL Acc:{avg_tl_acc:02.1f}%, '
+                             + f'VA Loss: {avg_va_loss:02.5f}]')
             if use_wandb:
                 wandb.log({'train/loss': float(avg_loss), 'train/acc TL': float(avg_tl_acc),
                            'train/acc SEG': float(avg_seg_acc), 'train/loss VA': float(avg_va_loss)}, step=global_step)
@@ -99,12 +99,14 @@ def train_for_classification(net, dataset, optimizer,
             train_loss.append(avg_loss)
             train_acc.append([avg_tl_acc, avg_seg_acc, avg_va_loss])
 
-            avg_tl_acc, avg_seg_acc, avg_va_loss = eval_net(device, net, seg_criterion, tl_criterion, va_criterion,
-                                                            val_loader, va_weights)
+            avg_tl_acc, avg_seg_acc, avg_va_loss, avg_multitask_loss = eval_net(device, net, seg_criterion,
+                                                                                tl_criterion, va_criterion,
+                                                                                val_loader, va_weights)
             test_loss.append([avg_tl_acc, avg_seg_acc, avg_va_loss])
-            sys.stdout.write(f', Val TL Acc:{avg_tl_acc:02.2f}%, '
-                             + f'Val SEG Acc:{avg_seg_acc:02.2f}%, '
-                             + f'Val VA Loss:{avg_va_loss:02.5f}%, '
+            sys.stdout.write(f', Val[Loss:{avg_multitask_loss:02.4f}, '
+                             + f'TL Acc:{avg_tl_acc:02.2f}%, '
+                             + f'SEG Acc:{avg_seg_acc:02.2f}%, '
+                             + f'VA Loss:{avg_va_loss:02.5f}%, '
                              + f'Avg-Time:{tiempo_epochs / e:.3f}s.\n')
             if use_wandb:
                 wandb.log({'val/acc TL': float(avg_tl_acc), 'val/acc SEG': float(avg_seg_acc),
@@ -113,7 +115,7 @@ def train_for_classification(net, dataset, optimizer,
                            'val/loss VA': float(avg_va_loss), 'epoch': e})
 
             # checkpointing
-            if avg_loss <= best_loss:
+            if avg_multitask_loss <= best_loss:
                 best_loss = avg_loss
                 model_name = f"best_{net.__class__.__name__}.pth"
                 torch.save(net.state_dict(), model_name)
@@ -131,7 +133,7 @@ def train_for_classification(net, dataset, optimizer,
 
 def eval_net(device, net, seg_criterion, tl_criterion, val_criterion, test_loader, va_weights):
     net.eval()
-    running_tl_acc, running_seg_acc, running_va_loss = 0.0, 0.0, 0.0
+    running_tl_acc, running_seg_acc, running_va_loss, running_multitask_loss = 0.0, 0.0, 0.0, 0.0
     total_test = 0
 
     for i, (x, s, tl, v_aff) in enumerate(test_loader):
@@ -140,25 +142,29 @@ def eval_net(device, net, seg_criterion, tl_criterion, val_criterion, test_loade
         with torch.no_grad():
             y = net(x)
 
-        # l1 = seg_criterion(y['segmentation'], s)
-        # l2 = tl_criterion(y['traffic_light_status'], tl)
-        # l3 = val_criterion(y['vehicle_affordances'], v_aff)
+        l1 = seg_criterion(y['segmentation'], s)
+        l2 = tl_criterion(y['traffic_light_status'], tl)
+        l3 = val_criterion(y['vehicle_affordances'], v_aff)
 
         # accuracy of traffic lights
         _, max_idx = torch.max(y['traffic_light_status'], dim=1)
-        running_tl_acc += torch.sum(max_idx == tl).item()
+        running_tl_acc += torch.sum(max_idx == torch.argmax(tl, dim=1)).item()
         # accuracy semantic
         _, max_idx = torch.max(y['segmentation'], dim=1)
         running_seg_acc += torch.sum(max_idx == s).item() / max_idx.numel()
         # error of vehicle affordances
         running_va_loss += torch.sum(((y['vehicle_affordances'] - v_aff).squeeze() * va_weights) ** 2).item()
+        # multi task loss
+        multi_task_loss = l1 + l2 + l3
+        running_multitask_loss += multi_task_loss.item() / (i + 1)
 
         total_test += x.shape[0]
 
     avg_tl_acc = (running_tl_acc / total_test) * 100
     avg_seg_acc = (running_seg_acc / total_test) * 100
     avg_va_loss = running_va_loss / total_test
-    return avg_tl_acc, avg_seg_acc, avg_va_loss
+    avg_multitask_loss = running_multitask_loss
+    return avg_tl_acc, avg_seg_acc, avg_va_loss, avg_multitask_loss
 
 
 if __name__ == "__main__":
@@ -175,7 +181,10 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Train model utility",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--batch_size', default=1, type=int, help='Batch size.')
+    parser.add_argument('--batch-size', default=1, type=int, help='Batch size.')
+    parser.add_argument('--backbone-type', default="resnet", type=str, help='Backbone architecture.')
+    parser.add_argument('--epochs', default=20, type=int, help='Number of epochs.')
+    parser.add_argument('--lr', default=0.0001, type=float, help='Learning rate.')
     args = parser.parse_args()
 
     torch.cuda.empty_cache()
@@ -191,21 +200,22 @@ if __name__ == "__main__":
 
     path = '../dataset'
     dataset = HDF5Dataset(path)
-    model = ADEncoder()
+    # dataset = CarlaDatasetSimple('../dataset/sample6')
+    model = ADEncoder(backbone=args.backbone_type)
     model.to(device)
 
     seg_loss = FocalLoss(apply_nonlin=torch.sigmoid)
     tl_loss_weights = torch.tensor([0.2, 0.8]).to(device)
     tl_loss = nn.BCEWithLogitsLoss(pos_weight=tl_loss_weights)
-    va_loss = nn.MSELoss()                                                  # esta explotando
+    va_loss = nn.MSELoss()  # esta explotando
 
-    optimizer = optim.Adam(model.parameters(), lr=0.0001)
+    optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
     train_for_classification(model, dataset, optimizer,
                              seg_loss, tl_loss, va_loss,
                              criterion_weights=[1, 1, 1],
                              lr_scheduler=None,
-                             epochs=5,
+                             epochs=args.epochs,
                              batch_size=args.batch_size,
                              reports_every=1,
                              device=device,

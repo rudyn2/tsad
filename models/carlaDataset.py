@@ -174,14 +174,17 @@ class HDF5Dataset(data.Dataset):
 if __name__ == "__main__":
     from torch.utils.data import DataLoader
     from models import ADEncoder
+    import time
 
     path = '../dataset'
     dataset = HDF5Dataset(path)
-    model = ADEncoder()
-    model.to('cuda')
-    loader = DataLoader(dataset, batch_size=3, pin_memory=True)
-
+    # model = ADEncoder()
+    # model.to('cuda')
+    loader = DataLoader(dataset, batch_size=32, pin_memory=True)
+    start = time.time()
     for img, semantic_map, tl_status, vehicle_aff in loader:
         img, semantic_map, tl_status, vehicle_aff = img.to('cuda'), semantic_map.to('cuda'), tl_status.to('cuda'), vehicle_aff.to('cuda')
-        y = model(img)
-        break
+        load_batch_time = time.time() - start
+        start = time.time()
+        print(f"Load time: {load_batch_time}")
+

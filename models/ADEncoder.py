@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from efficientnet_pytorch import EfficientNet
 
 
 class ResBlock(nn.Module):
@@ -76,11 +77,6 @@ class ResNet(nn.Module):
         x = self.layer4(x)
         x = self.reduce_channels_conv(x)
         x = self.avgpool(x)
-        # embedding = x
-        # x = torch.flatten(x, 1)
-        # x = self.fc(x)
-        # out = x
-
         return x
 
     def _make_layer(self, res_block, num_residual_blocks, inter_channels, stride):
@@ -177,14 +173,33 @@ class VehicleAffordanceRegressor(nn.Module):
         return x
 
 
+class EfficientNetBackbone(nn.Module):
+
+    def __init__(self):
+        super(EfficientNetBackbone, self).__init__()
+        self.backbone = EfficientNet.from_name("efficientnet-b1", in_channels=4, include_top=False)
+        self.conv_adjust_channels = torch.nn.Conv2d(1280, 512, kernel_size=(1, 1))
+        self.pool_adjust_dim = torch.nn.AdaptiveAvgPool2d((4, 4))
+
+    def forward(self, x):
+        x = self.backbone.extract_endpoints(x)['reduction_6']
+        x = self.conv_adjust_channels(x)
+        x = self.pool_adjust_dim(x)
+        return x
+
+
 class ADEncoder(nn.Module):
     """
     Autonomous Driving Encoder
     """
 
-    def __init__(self):
+    def __init__(self, backbone: str):
         super(ADEncoder, self).__init__()
-        self.backbone = ResNet(ResBlock, [3, 4, 6, 3], 4, 10)
+        assert backbone in ["resnet", "efficientnet"], "Supported backbones: resnet, efficientnet"
+        if backbone == "resnet":
+            self.backbone = ResNet(ResBlock, [3, 4, 6, 3], 4, 10)
+        elif backbone == "efficientnet":
+            self.backbone = EfficientNetBackbone()
         self.seg = ImageSegmentationBranch(512, 22)
         self.traffic_light_classifier = TrafficLightClassifier()
         self.vehicle_awareness = VehicleAffordanceRegressor()
@@ -214,5 +229,5 @@ class ADEncoder(nn.Module):
 if __name__ == '__main__':
     torch.cuda.empty_cache()
     sample_input = torch.rand((1, 4, 288, 288)).to('cuda')
-    model = ADEncoder().to('cuda')
+    model = ADEncoder(backbone='efficientnet').to('cuda')
     y = model(sample_input)
