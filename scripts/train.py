@@ -184,6 +184,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Train model utility",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--data', default='../dataset', type=str, help='Path to dataset folder')
     parser.add_argument('--batch-size', default=1, type=int, help='Batch size.')
     parser.add_argument('--backbone-type', default="resnet", type=str, help='Backbone architecture.')
     parser.add_argument('--epochs', default=20, type=int, help='Number of epochs.')
