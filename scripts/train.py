@@ -110,9 +110,11 @@ def train_for_classification(net, dataset, optimizer,
                              + f'Avg-Time:{tiempo_epochs / e:.3f}s.\n')
             if use_wandb:
                 wandb.log({'val/acc TL': float(avg_tl_acc), 'val/acc SEG': float(avg_seg_acc),
-                           'val/loss VA': float(avg_va_loss)}, step=global_step)
+                           'val/loss VA': float(avg_va_loss), 'val/loss MultiTask': float(avg_multitask_loss)},
+                          step=global_step)
                 wandb.log({'val/acc TL': float(avg_tl_acc), 'val/acc SEG': float(avg_seg_acc),
-                           'val/loss VA': float(avg_va_loss), 'epoch': e})
+                           'val/loss VA': float(avg_va_loss), 'val/loss MultiTask': float(avg_multitask_loss),
+                           'epoch': e})
 
             # checkpointing
             if avg_multitask_loss <= best_loss:
@@ -121,6 +123,7 @@ def train_for_classification(net, dataset, optimizer,
                 torch.save(net.state_dict(), model_name)
                 if use_wandb:
                     wandb.save(model_name)
+                    wandb.log({'best_val_multitask_loss': float(best_loss), 'epoch': e})
 
         else:
             sys.stdout.write('\n')
@@ -194,9 +197,7 @@ if __name__ == "__main__":
     if use_cuda:
         torch.cuda.manual_seed(0)
 
-    # wandb.init(config=args, project="my-project")
-    # wandb.init(project="tsad")
-    # wandb.config["more"] = "custom"
+    wandb.init(project='tsad', entity='autonomous-driving')
 
     path = '../dataset'
     dataset = HDF5Dataset(path)
@@ -211,6 +212,12 @@ if __name__ == "__main__":
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
+    # wandb config specification
+    config = wandb.config
+    config.learning_rate = args.lr
+    config.batch_size = args.batch_size
+    config.model = args.backbone_type
+
     train_for_classification(model, dataset, optimizer,
                              seg_loss, tl_loss, va_loss,
                              criterion_weights=[1, 1, 1],
@@ -220,4 +227,5 @@ if __name__ == "__main__":
                              reports_every=1,
                              device=device,
                              val_percent=0.1,
-                             va_weights=tl_loss_weights)
+                             va_weights=tl_loss_weights,
+                             use_wandb=True)

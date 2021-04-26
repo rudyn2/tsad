@@ -2,5 +2,6 @@ numpy==1.20.2
 Pillow==8.2.0
 wandb
 h5py
+efficientnet_pytorch
 memory_profiler
 pytorch-memlab==0.2.3

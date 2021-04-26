@@ -17,7 +17,7 @@ RUN pip install -r requirements.txt
 # Copy code
 COPY scripts/ /home/tsad/scripts/
 COPY models/ /home/tsad/models/
-COPY sample_dataset/ /home/tsad/dataset/
+RUN mkdir /home/tsad/dataset
 WORKDIR /home/tsad/scripts
 
 # Set some envirnonment variables
