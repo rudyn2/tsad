@@ -5,6 +5,7 @@ import torch
 import h5py
 from torch.utils import data
 from typing import Tuple
+from tqdm import tqdm
 
 
 class HDF5Dataset(data.Dataset):
@@ -41,7 +42,7 @@ class HDF5Dataset(data.Dataset):
         if len(files) < 1 or len(data) != len(files):
             raise RuntimeError('No hdf5 datasets found')
 
-        for h5dataset_fp, json_fp in zip(files, data):
+        for h5dataset_fp, json_fp in tqdm(zip(files, data), "Reading data info"):
             self._add_data_infos(str(h5dataset_fp.resolve()), str(json_fp.resolve()))
 
     # @memory_profiler.profile
