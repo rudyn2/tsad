@@ -200,8 +200,8 @@ if __name__ == "__main__":
 
     wandb.init(project='tsad', entity='autonomous-driving')
 
-    path = '../dataset'
-    dataset = HDF5Dataset(path)
+    print("Loading data")
+    dataset = HDF5Dataset(args.data)
     # dataset = CarlaDatasetSimple('../dataset/sample6')
     model = ADEncoder(backbone=args.backbone_type)
     model.to(device)
@@ -219,6 +219,7 @@ if __name__ == "__main__":
     config.batch_size = args.batch_size
     config.model = args.backbone_type
 
+    print("Training...")
     train_for_classification(model, dataset, optimizer,
                              seg_loss, tl_loss, va_loss,
                              criterion_weights=[1, 1, 1],
