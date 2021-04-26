@@ -42,7 +42,7 @@ class HDF5Dataset(data.Dataset):
         if len(files) < 1 or len(data) != len(files):
             raise RuntimeError('No hdf5 datasets found')
 
-        for h5dataset_fp, json_fp in tqdm(zip(files, data), "Reading data info"):
+        for h5dataset_fp, json_fp in zip(files, data):
             self._add_data_infos(str(h5dataset_fp.resolve()), str(json_fp.resolve()))
 
     # @memory_profiler.profile
@@ -81,7 +81,7 @@ class HDF5Dataset(data.Dataset):
         with h5py.File(file_path, 'r') as h5_file, open(json_path) as json_file:
             control = json.load(json_file)
             # Walk through all groups, extracting datasets
-            for ep_name, episode in h5_file.items():
+            for ep_name, episode in tqdm(h5_file.items(), "Reading data info "):
                 for tname, timestamp in episode.items():
                     shapes = []
                     datas = {}
