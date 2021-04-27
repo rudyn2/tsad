@@ -166,11 +166,13 @@ class HDF5Dataset(data.Dataset):
         fp = timestamp['file_path']
         jp = timestamp['json_path']
         if self.load_data:
-            if fp not in self.data_cache or cache_idx == -1:
-                self._load_data(cache_idx, fp, jp)
-                # get new cache_idx assigned by _load_data_info
-                cache_idx = self.data_info[i]['cache_idx']
-            return self.data_cache[fp][cache_idx], self.data_info[i]
+            if cache_idx != -1:
+                return self.data_cache[fp][cache_idx], self.data_info[i]
+            # if fp not in self.data_cache or cache_idx == -1:
+            #     self._load_data(cache_idx, fp, jp)
+            #     # get new cache_idx assigned by _load_data_info
+            #     cache_idx = self.data_info[i]['cache_idx']
+            # return self.data_cache[fp][cache_idx], self.data_info[i]
 
         with h5py.File(fp, 'r') as f:
             datas = {}
