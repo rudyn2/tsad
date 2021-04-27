@@ -2,7 +2,7 @@ import h5py
 import random
 from tqdm import tqdm
 from utils.hdf5_saver import HDF5Saver
-
+import argparse
 
 
 class Splitter:
@@ -33,6 +33,12 @@ class Splitter:
 
 
 if __name__ == '__main__':
-    s = Splitter('/home/rudy/Documents/carla-dataset-runner/data/sample6/sample6.hdf5',
-                 'small.hdf5')
-    s.split(0.5)
+    parser = argparse.ArgumentParser(description="Splitter utility",
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--data', default='../dataset', type=str, help='Path to dataset folder')
+    parser.add_argument('--ratio', required=True, type=float, help='Size ratio of new hdf5 dataset')
+    parser.add_argument('--output-data', required=True, type=str, help='Path to output hdf5 dataset')
+    args = parser.parse_args()
+
+    s = Splitter(args.data, args.output_data)
+    s.split(args.ratio)
