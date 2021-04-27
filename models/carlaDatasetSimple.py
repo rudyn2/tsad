@@ -45,7 +45,7 @@ class CarlaDatasetSimple(Dataset):
             x = torch.from_numpy(x).float()
 
         # get ground truth
-        s = semantic[np.newaxis, :, :] - 1
+        s = semantic[np.newaxis, :, :]
         s = torch.tensor(s, dtype=torch.int8)
 
         tl = torch.tensor([1, 0] if data['tl_state'] == 'Green' else [0, 1], dtype=torch.float16)

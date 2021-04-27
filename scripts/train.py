@@ -51,6 +51,7 @@ def train_for_classification(net, dataset, optimizer,
             # optimization step
             optimizer.zero_grad()
             y = net(x)
+            # print(s.shape)
             l1 = seg_criterion(y['segmentation'], s)
             l2 = tl_criterion(y['traffic_light_status'], tl)
             l3 = va_criterion(y['vehicle_affordances'], v_aff)
@@ -179,6 +180,7 @@ if __name__ == "__main__":
     sys.path.append('.')
     from models.ADEncoder import ADEncoder
     from models.carlaDataset import HDF5Dataset
+    from models.carlaDatasetSimple import CarlaDatasetSimple
     from models.losses import FocalLoss
     import argparse
 
@@ -201,8 +203,8 @@ if __name__ == "__main__":
     wandb.init(project='tsad', entity='autonomous-driving')
 
     print("Loading data")
-    dataset = HDF5Dataset(args.data)
-    # dataset = CarlaDatasetSimple('../dataset/sample6')
+    # dataset = HDF5Dataset(args.data)
+    dataset = CarlaDatasetSimple(args.data)
     model = ADEncoder(backbone=args.backbone_type)
     model.to(device)
 
