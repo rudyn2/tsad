@@ -1,5 +1,5 @@
 FROM ubuntu:20.04
-FROM pytorch/pytorch:1.8.0-cuda11.1-cudnn8-devel
+FROM pytorch/pytorch
 
 
 # RUN conda env create -f environment.yml
