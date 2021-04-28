@@ -1,5 +1,5 @@
-FROM ubuntu:20.04
-FROM pytorch/pytorch
+FROM anibali/pytorch:1.5.0-cuda10.2
+USER root
 
 
 # RUN conda env create -f environment.yml

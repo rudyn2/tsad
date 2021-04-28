@@ -221,6 +221,7 @@ if __name__ == "__main__":
     torch.cuda.empty_cache()
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
+    print(f"Using device: {device}")
     torch.manual_seed(0)
     if use_cuda:
         torch.cuda.manual_seed(0)
