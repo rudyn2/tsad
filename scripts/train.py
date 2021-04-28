@@ -107,7 +107,7 @@ def train_for_classification(net, dataset, optimizer,
             sys.stdout.write(f', Val[Loss:{avg_multitask_loss:02.4f}, '
                              + f'TL Acc:{avg_tl_acc:02.2f}%, '
                              + f'SEG Acc:{avg_seg_acc:02.2f}%, '
-                             + f'VA Loss:{avg_va_loss:02.5f}%, '
+                             + f'VA Loss:{avg_va_loss:02.5f}, '
                              + f'Avg-Time:{tiempo_epochs / e:.3f}s.\n')
             if use_wandb:
                 wandb.log({'val/acc TL': float(avg_tl_acc), 'val/acc SEG': float(avg_seg_acc),
