@@ -126,15 +126,15 @@ class UpConvBlock(nn.Module):
 
 class ImageSegmentationBranch(nn.Module):
 
-    def __init__(self, in_channels: int, output_channels: int):
+    def __init__(self, in_channels: int, output_channels: int, use_bn: bool = False):
         super(ImageSegmentationBranch, self).__init__()
         self.in_channels = in_channels
         self.up1 = UpConvBlock(in_channels, in_channels // 2)
-        self.up2 = UpConvBlock(in_channels // 2, in_channels // 4, padding=(1, 1), output_padding=(1, 1))
-        self.up3 = UpConvBlock(in_channels // 4, in_channels // 8, padding=(1, 1), output_padding=(1, 1))
-        self.up4 = UpConvBlock(in_channels // 8, in_channels // 16, padding=(1, 1), output_padding=(1, 1))
-        self.up5 = UpConvBlock(in_channels // 16, in_channels // 32, padding=(1, 1), output_padding=(1, 1))
-        self.up6 = UpConvBlock(in_channels // 32, in_channels // 64, padding=(1, 1), output_padding=(1, 1))
+        self.up2 = UpConvBlock(in_channels // 2, in_channels // 4, use_bn, padding=(1, 1), output_padding=(1, 1))
+        self.up3 = UpConvBlock(in_channels // 4, in_channels // 8, use_bn, padding=(1, 1), output_padding=(1, 1))
+        self.up4 = UpConvBlock(in_channels // 8, in_channels // 16, use_bn, padding=(1, 1), output_padding=(1, 1))
+        self.up5 = UpConvBlock(in_channels // 16, in_channels // 32, use_bn, padding=(1, 1), output_padding=(1, 1))
+        self.up6 = UpConvBlock(in_channels // 32, in_channels // 64, use_bn, padding=(1, 1), output_padding=(1, 1))
         self.output_conv = nn.Conv2d(in_channels // 64, output_channels, kernel_size=(1, 1))
 
     def forward(self, x):
@@ -208,14 +208,14 @@ class ADEncoder(nn.Module):
     Autonomous Driving Encoder
     """
 
-    def __init__(self, backbone: str):
+    def __init__(self, backbone: str, use_bn: bool = False):
         super(ADEncoder, self).__init__()
         assert backbone in ["resnet", "efficientnet"], "Supported backbones: resnet, efficientnet"
         if backbone == "resnet":
             self.backbone = ResNet(ResBlock, [3, 4, 6, 3], 4, 10)
         elif backbone == "efficientnet":
             self.backbone = EfficientNetBackbone()
-        self.seg = ImageSegmentationBranch(512, 23)
+        self.seg = ImageSegmentationBranch(512, 23, use_bn)
         self.traffic_light_classifier = TrafficLightClassifier()
         self.vehicle_awareness = VehicleAffordanceRegressor()
 

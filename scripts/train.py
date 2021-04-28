@@ -213,6 +213,8 @@ if __name__ == "__main__":
     parser.add_argument('--dataset', default='simple', type=str, help='Type of dataset [cached, simple]')
     parser.add_argument('--cache-size', default=1024, type=int, help='Cache size of cached dataset.')
     parser.add_argument('--batch-size', default=64, type=int, help='Batch size.')
+    parser.add_argument('--use-bn', action="store_true",
+                        help='Whether to use batch normalization at upconvolution layers or not.')
     parser.add_argument('--backbone-type', default="efficientnet", type=str, help='Backbone architecture.')
     parser.add_argument('--loss-weights', default="1, 1, 1", type=str,
                         help='Loss weights [segmentation, traffic light status, vehicle affordances ]')
@@ -238,7 +240,7 @@ if __name__ == "__main__":
     else:
         dataset = CarlaDatasetSimple('../dataset/sample6')
 
-    model = ADEncoder(backbone=args.backbone_type)
+    model = ADEncoder(backbone=args.backbone_type, use_bn=args.use_bn)
     model.to(device)
 
     tl_weights = str(args.tl_weights).split(",")
