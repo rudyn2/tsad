@@ -3,6 +3,7 @@ import h5py
 import numpy as np
 import json
 import torch
+from pathlib import Path
 
 
 class CarlaDatasetSimple(Dataset):
@@ -13,19 +14,34 @@ class CarlaDatasetSimple(Dataset):
         self.timestamps = None
         self.metadata = None
         self.transform = None
-        self.read_timestamps()
-        self.read_metadata()
+
+        self.hdf5_path = self.read_timestamps()
+        self.json_path = self.read_metadata()
 
     def read_timestamps(self):
-        with h5py.File(self.path + ".hdf5", "r") as f:
+        hdf5_files = list(Path(self.path).glob('**/*.hdf5'))
+        if len(hdf5_files) < 1:
+            raise RuntimeError("We couldn't find hdf5 files at provided path")
+
+        # assume that there is just one hdf5 file at provided path
+        hdf5_path = hdf5_files[0]
+        with h5py.File(hdf5_path, "r") as f:
             for run in f.keys():
                 for timestamp in f[run].keys():
                     self.run_timestamp_mapping[timestamp] = run
         self.timestamps = list(self.run_timestamp_mapping.keys())
+        return hdf5_path
 
     def read_metadata(self):
-        with open(self.path + ".json", "r") as f:
+        json_files = list(Path(self.path).glob('**/*.json'))
+        if len(json_files) < 1:
+            raise RuntimeError("We couldn't find json files at provided path")
+
+        # assume that there is just one hdf5 file at provided path
+        json_path = json_files[0]
+        with open(json_path, "r") as f:
             self.metadata = json.load(f)
+        return json_path
 
     def __getitem__(self, item):
         element = self.timestamps[item]
@@ -55,4 +71,8 @@ class CarlaDatasetSimple(Dataset):
 
     def __len__(self):
         return len(self.run_timestamp_mapping)
+
+
+if __name__ == '__main__':
+    d = CarlaDatasetSimple('../dataset')
 

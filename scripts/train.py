@@ -238,7 +238,7 @@ if __name__ == "__main__":
     if args.dataset == 'cached':
         dataset = HDF5Dataset(args.data)
     else:
-        dataset = CarlaDatasetSimple('../dataset/sample6')
+        dataset = CarlaDatasetSimple(args.data)
 
     model = ADEncoder(backbone=args.backbone_type, use_bn=args.use_bn)
     model.to(device)
