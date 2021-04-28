@@ -211,9 +211,11 @@ if __name__ == "__main__":
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--data', default='../dataset', type=str, help='Path to dataset folder')
     parser.add_argument('--dataset', default='simple', type=str, help='Type of dataset [cached, simple]')
-    parser.add_argument('--cache-size', default=3, type=int, help='Cache size of cached dataset.')
-    parser.add_argument('--batch-size', default=1, type=int, help='Batch size.')
-    parser.add_argument('--backbone-type', default="resnet", type=str, help='Backbone architecture.')
+    parser.add_argument('--cache-size', default=1024, type=int, help='Cache size of cached dataset.')
+    parser.add_argument('--batch-size', default=64, type=int, help='Batch size.')
+    parser.add_argument('--backbone-type', default="efficientnet", type=str, help='Backbone architecture.')
+    parser.add_argument('--loss-weights', default="1, 1, 1", type=str,
+                        help='Loss weights [segmentation, traffic light status, vehicle affordances ]')
     parser.add_argument('--epochs', default=20, type=int, help='Number of epochs.')
     parser.add_argument('--lr', default=0.0001, type=float, help='Learning rate.')
     args = parser.parse_args()
@@ -249,11 +251,14 @@ if __name__ == "__main__":
     config.learning_rate = args.lr
     config.batch_size = args.batch_size
     config.model = args.backbone_type
+    config.loss_weights = args.loss_weights
 
     print("Training...")
+    loss_weights = str(args.loss_weights).split(",")
+    loss_weights = [float(s) for s in loss_weights]
     train_for_classification(model, dataset, optimizer,
                              seg_loss, tl_loss, va_loss,
-                             criterion_weights=[1, 1, 1],
+                             criterion_weights=loss_weights,
                              lr_scheduler=None,
                              epochs=args.epochs,
                              batch_size=args.batch_size,
