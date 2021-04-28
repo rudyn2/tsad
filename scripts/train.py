@@ -37,8 +37,9 @@ def train_for_classification(net, dataset, optimizer,
         net.train()
 
         # Variables para las métricas
-        running_loss, running_tl_acc, running_seg_acc, running_va_loss = 0.0, 0.0, 0.0, 0.0
-        avg_tl_acc, avg_seg_acc, avg_va_loss, avg_loss = 0, 0, 0, 0
+        running_tl_acc, running_seg_acc = 0.0, 0.0
+        running_seg_loss, running_tl_loss, running_va_loss, running_loss = 0.0, 0.0, 0.0, 0.0
+        avg_tl_acc, avg_seg_acc, avg_va_loss, avg_loss, avg_tl_loss, avg_seg_loss = 0, 0, 0, 0, 0, 0
 
         for i, (x, s, tl, v_aff) in enumerate(train_loader):
 
@@ -61,19 +62,25 @@ def train_for_classification(net, dataset, optimizer,
             # loss
             items = min(n_train, (i + 1) * train_loader.batch_size)
             running_loss += loss.item()
+            running_seg_loss += l1.item()
+            running_tl_loss += l2.item()
+            running_va_loss += l3.item()
+
+            # averaging losses
             avg_loss = running_loss / (i + 1)
+            avg_seg_loss = running_seg_loss / (i + 1)
+            avg_tl_loss = running_tl_loss / (i + 1)
+            avg_va_loss = running_va_loss / (i + 1)
 
             # accuracy of traffic lights
             _, max_idx = torch.max(y['traffic_light_status'], dim=1)
             running_tl_acc += torch.sum(max_idx == torch.argmax(tl, dim=1)).item()
             avg_tl_acc = running_tl_acc / items * 100
+
             # accuracy semantic
             _, max_idx = torch.max(y['segmentation'], dim=1)
             running_seg_acc += torch.sum(max_idx == s).item() / max_idx.numel()
             avg_seg_acc = running_seg_acc / items * 100
-            # error of vehicle affordances
-            running_va_loss += torch.sum(((y['vehicle_affordances'] - v_aff).squeeze() * va_weights) ** 2).item()
-            avg_va_loss = running_va_loss / items
 
             # report
             sys.stdout.write(f'\rEpoch:{e}({items}/{n_train}), '
@@ -84,14 +91,20 @@ def train_for_classification(net, dataset, optimizer,
                              + f'VA Loss: {avg_va_loss:02.5f}]')
             if use_wandb:
                 wandb.log({'train/loss': float(avg_loss), 'train/acc TL': float(avg_tl_acc),
+                           'train/loss SEG': float(avg_seg_loss), 'train/loss TL': float(avg_tl_loss),
                            'train/acc SEG': float(avg_seg_acc), 'train/loss VA': float(avg_va_loss)}, step=global_step)
             global_step += 1
 
         tiempo_epochs += time.time() - inicio_epoch
         if use_wandb:
             wandb.log(
-                {'train/loss': float(avg_loss), 'train/acc TL': float(avg_tl_acc), 'train/acc SEG': float(avg_seg_acc),
-                 'train/loss VA': float(avg_va_loss), 'epoch': e})
+                {'train/loss': float(avg_loss),
+                 'train/acc TL': float(avg_tl_acc),
+                 'train/acc SEG': float(avg_seg_acc),
+                 'train/loss VA': float(avg_va_loss),
+                 'train/loss TL': float(avg_tl_loss),
+                 'train/loss SEG': float(avg_seg_loss),
+                 'epoch': e})
 
         if e % reports_every == 0:
             sys.stdout.write(', Validating...')
@@ -99,25 +112,28 @@ def train_for_classification(net, dataset, optimizer,
             train_loss.append(avg_loss)
             train_acc.append([avg_tl_acc, avg_seg_acc, avg_va_loss])
 
-            avg_tl_acc, avg_seg_acc, avg_va_loss, avg_multitask_loss = eval_net(device, net, seg_criterion,
-                                                                                tl_criterion, va_criterion,
-                                                                                val_loader, va_weights)
+            avg_tl_acc, avg_seg_acc, avg_loss, avg_seg_loss, avg_tl_loss, avg_va_loss = eval_net(device, net,
+                                                                                                 seg_criterion,
+                                                                                                 tl_criterion,
+                                                                                                 va_criterion,
+                                                                                                 val_loader, va_weights)
             test_loss.append([avg_tl_acc, avg_seg_acc, avg_va_loss])
-            sys.stdout.write(f', Val[Loss:{avg_multitask_loss:02.4f}, '
+            sys.stdout.write(f', Val[Loss:{avg_loss:02.4f}, '
                              + f'TL Acc:{avg_tl_acc:02.2f}%, '
                              + f'SEG Acc:{avg_seg_acc:02.2f}%, '
                              + f'VA Loss:{avg_va_loss:02.5f}%, '
                              + f'Avg-Time:{tiempo_epochs / e:.3f}s.\n')
             if use_wandb:
                 wandb.log({'val/acc TL': float(avg_tl_acc), 'val/acc SEG': float(avg_seg_acc),
-                           'val/loss VA': float(avg_va_loss), 'val/loss MultiTask': float(avg_multitask_loss)},
+                           'val/loss VA': float(avg_va_loss), 'val/loss': float(avg_loss),
+                           'val/loss TL': float(avg_tl_loss), 'val/loss SEG': float(avg_seg_loss)},
                           step=global_step)
                 wandb.log({'val/acc TL': float(avg_tl_acc), 'val/acc SEG': float(avg_seg_acc),
-                           'val/loss VA': float(avg_va_loss), 'val/loss MultiTask': float(avg_multitask_loss),
-                           'epoch': e})
+                           'val/loss VA': float(avg_va_loss), 'val/loss': float(avg_loss),
+                           'val/loss TL': float(avg_tl_loss), 'val/loss SEG': float(avg_seg_loss), 'epoch': e})
 
             # checkpointing
-            if avg_multitask_loss <= best_loss:
+            if avg_loss <= best_loss:
                 best_loss = avg_loss
                 model_name = f"best_{net.__class__.__name__}.pth"
                 torch.save(net.state_dict(), model_name)
@@ -136,8 +152,10 @@ def train_for_classification(net, dataset, optimizer,
 
 def eval_net(device, net, seg_criterion, tl_criterion, val_criterion, test_loader, va_weights):
     net.eval()
-    running_tl_acc, running_seg_acc, running_va_loss, running_multitask_loss = 0.0, 0.0, 0.0, 0.0
+    running_tl_acc, running_seg_acc, running_va_loss, running_loss = 0.0, 0.0, 0.0, 0.0
+    running_seg_loss, running_tl_loss = 0.0, 0.0
     total_test = 0
+    avg_loss, avg_seg_loss, avg_tl_loss, avg_va_loss = 0, 0, 0, 0
 
     for i, (x, s, tl, v_aff) in enumerate(test_loader):
         x, s, tl, v_aff = x.to(device), s.to(device), tl.to(device), v_aff.to(device)
@@ -148,6 +166,18 @@ def eval_net(device, net, seg_criterion, tl_criterion, val_criterion, test_loade
         l1 = seg_criterion(y['segmentation'], s)
         l2 = tl_criterion(y['traffic_light_status'], tl)
         l3 = val_criterion(y['vehicle_affordances'], v_aff)
+        loss = l1 + l2 + l3
+
+        running_loss += loss.item()
+        running_seg_loss += l1.item()
+        running_tl_loss += l2.item()
+        running_va_loss += l3.item()
+
+        # averaging losses
+        avg_loss = running_loss / (i + 1)
+        avg_seg_loss = running_seg_loss / (i + 1)
+        avg_tl_loss = running_tl_loss / (i + 1)
+        avg_va_loss = running_va_loss / (i + 1)
 
         # accuracy of traffic lights
         _, max_idx = torch.max(y['traffic_light_status'], dim=1)
@@ -155,19 +185,13 @@ def eval_net(device, net, seg_criterion, tl_criterion, val_criterion, test_loade
         # accuracy semantic
         _, max_idx = torch.max(y['segmentation'], dim=1)
         running_seg_acc += torch.sum(max_idx == s).item() / max_idx.numel()
-        # error of vehicle affordances
-        running_va_loss += torch.sum(((y['vehicle_affordances'] - v_aff).squeeze() * va_weights) ** 2).item()
-        # multi task loss
-        multi_task_loss = l1 + l2 + l3
-        running_multitask_loss += multi_task_loss.item() / (i + 1)
 
         total_test += x.shape[0]
 
     avg_tl_acc = (running_tl_acc / total_test) * 100
     avg_seg_acc = (running_seg_acc / total_test) * 100
-    avg_va_loss = running_va_loss / total_test
-    avg_multitask_loss = running_multitask_loss
-    return avg_tl_acc, avg_seg_acc, avg_va_loss, avg_multitask_loss
+
+    return avg_tl_acc, avg_seg_acc, avg_loss, avg_seg_loss, avg_tl_loss, avg_va_loss
 
 
 if __name__ == "__main__":
