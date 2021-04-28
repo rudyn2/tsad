@@ -100,7 +100,7 @@ class HDF5Dataset(data.Dataset):
         return x, s, tl, v_aff
 
     def _map_classes(self, semantic: torch.Tensor) -> torch.Tensor:
-        for k, v in self.CLASS_MAPPING:
+        for k, v in self.CLASS_MAPPING.items():
             semantic[semantic == k] = v
         return semantic
 
