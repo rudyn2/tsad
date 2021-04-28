@@ -104,31 +104,46 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
 
+class UpConvBlock(nn.Module):
+    """
+    x2 space resolution
+    """
+    def __init__(self, in_channels: int, out_channels: int, use_bn: bool = False, **kwargs):
+        super(UpConvBlock, self).__init__()
+        self.up_conv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=(3, 3), stride=(2, 2), **kwargs)
+        self.non_linear = nn.ReLU()
+        self.use_bn = use_bn
+        if use_bn:
+            self.bn = nn.BatchNorm2d(out_channels)
+
+    def forward(self, x):
+        x = self.up_conv(x)
+        if self.use_bn:
+            x = self.bn(x)
+        x = self.non_linear(x)
+        return x
+
+
 class ImageSegmentationBranch(nn.Module):
 
     def __init__(self, in_channels: int, output_channels: int):
         super(ImageSegmentationBranch, self).__init__()
         self.in_channels = in_channels
-        self.upconv1 = nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=(3, 3), stride=(2, 2))
-        self.upconv2 = nn.ConvTranspose2d(in_channels // 2, in_channels // 4, kernel_size=(3, 3), stride=(2, 2),
-                                          padding=(1, 1), output_padding=(1, 1))
-        self.upconv3 = nn.ConvTranspose2d(in_channels // 4, in_channels // 8, kernel_size=(3, 3), stride=(2, 2),
-                                          padding=(1, 1), output_padding=(1, 1))
-        self.upconv4 = nn.ConvTranspose2d(in_channels // 8, in_channels // 16, kernel_size=(3, 3), stride=(2, 2),
-                                          padding=(1, 1), output_padding=(1, 1))
-        self.upconv5 = nn.ConvTranspose2d(in_channels // 16, in_channels // 32, kernel_size=(3, 3), stride=(2, 2),
-                                          padding=(1, 1), output_padding=(1, 1))
-        self.upconv6 = nn.ConvTranspose2d(in_channels // 32, in_channels // 64, kernel_size=(3, 3), stride=(2, 2),
-                                          padding=(1, 1), output_padding=(1, 1))
+        self.up1 = UpConvBlock(in_channels, in_channels // 2)
+        self.up2 = UpConvBlock(in_channels // 2, in_channels // 4, padding=(1, 1), output_padding=(1, 1))
+        self.up3 = UpConvBlock(in_channels // 4, in_channels // 8, padding=(1, 1), output_padding=(1, 1))
+        self.up4 = UpConvBlock(in_channels // 8, in_channels // 16, padding=(1, 1), output_padding=(1, 1))
+        self.up5 = UpConvBlock(in_channels // 16, in_channels // 32, padding=(1, 1), output_padding=(1, 1))
+        self.up6 = UpConvBlock(in_channels // 32, in_channels // 64, padding=(1, 1), output_padding=(1, 1))
         self.output_conv = nn.Conv2d(in_channels // 64, output_channels, kernel_size=(1, 1))
 
     def forward(self, x):
-        x = self.upconv1(x)
-        x = self.upconv2(x)
-        x = self.upconv3(x)
-        x = self.upconv4(x)
-        x = self.upconv5(x)
-        x = self.upconv6(x)
+        x = self.up1(x)
+        x = self.up2(x)
+        x = self.up3(x)
+        x = self.up4(x)
+        x = self.up5(x)
+        x = self.up6(x)
         x = self.output_conv(x)
         return x
 

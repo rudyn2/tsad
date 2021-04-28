@@ -51,7 +51,6 @@ def train_for_classification(net, dataset, optimizer,
             # optimization step
             optimizer.zero_grad()
             y = net(x)
-            # print(s.shape)
             l1 = seg_criterion(y['segmentation'], s)
             l2 = tl_criterion(y['traffic_light_status'], tl)
             l3 = va_criterion(y['vehicle_affordances'], v_aff)
@@ -187,6 +186,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train model utility",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--data', default='../dataset', type=str, help='Path to dataset folder')
+    parser.add_argument('--dataset', default='simple', type=str, help='Type of dataset [cached, simple]')
+    parser.add_argument('--cache-size', default=3, type=int, help='Cache size of cached dataset.')
     parser.add_argument('--batch-size', default=1, type=int, help='Batch size.')
     parser.add_argument('--backbone-type', default="resnet", type=str, help='Backbone architecture.')
     parser.add_argument('--epochs', default=20, type=int, help='Number of epochs.')
@@ -203,15 +204,18 @@ if __name__ == "__main__":
     wandb.init(project='tsad', entity='autonomous-driving')
 
     print("Loading data")
-    # dataset = HDF5Dataset(args.data)
-    dataset = CarlaDatasetSimple(args.data)
+    if args.dataset == 'cached':
+        dataset = HDF5Dataset(args.data)
+    else:
+        dataset = CarlaDatasetSimple('../dataset/sample6')
+
     model = ADEncoder(backbone=args.backbone_type)
     model.to(device)
 
     seg_loss = FocalLoss(apply_nonlin=torch.sigmoid)
     tl_loss_weights = torch.tensor([0.2, 0.8]).to(device)
     tl_loss = nn.BCEWithLogitsLoss(pos_weight=tl_loss_weights)
-    va_loss = nn.MSELoss()  # esta explotando
+    va_loss = nn.MSELoss()
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
