@@ -56,18 +56,3 @@ class CarlaDatasetSimple(Dataset):
     def __len__(self):
         return len(self.run_timestamp_mapping)
 
-
-if __name__ == '__main__':
-    from torch.utils.data import DataLoader
-    import time
-
-    train_dataset = CarlaDatasetSimple("/home/rudy/Documents/tsad/dataset/sample6")
-    train_loader = DataLoader(train_dataset, batch_size=32)
-
-    start = time.time()
-    for img, semantic_map, tl_status, vehicle_aff in train_loader:
-        img, semantic_map, tl_status, vehicle_aff = img.to('cuda'), semantic_map.to('cuda'), tl_status.to(
-            'cuda'), vehicle_aff.to('cuda')
-        load_batch_time = time.time() - start
-        start = time.time()
-        print(f"Load time: {load_batch_time}")

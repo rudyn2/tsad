@@ -216,6 +216,8 @@ if __name__ == "__main__":
     parser.add_argument('--backbone-type', default="efficientnet", type=str, help='Backbone architecture.')
     parser.add_argument('--loss-weights', default="1, 1, 1", type=str,
                         help='Loss weights [segmentation, traffic light status, vehicle affordances ]')
+    parser.add_argument('--tl-weights', default="0.2, 0.8", type=str,
+                        help='Traffic light weights [Green, Red]')
     parser.add_argument('--epochs', default=20, type=int, help='Number of epochs.')
     parser.add_argument('--lr', default=0.0001, type=float, help='Learning rate.')
     args = parser.parse_args()
@@ -239,8 +241,10 @@ if __name__ == "__main__":
     model = ADEncoder(backbone=args.backbone_type)
     model.to(device)
 
+    tl_weights = str(args.tl_weights).split(",")
+    tl_weights = [float(s) for s in tl_weights]
     seg_loss = FocalLoss(apply_nonlin=torch.sigmoid)
-    tl_loss_weights = torch.tensor([0.2, 0.8]).to(device)
+    tl_loss_weights = torch.tensor(tl_weights).to(device)
     tl_loss = nn.BCEWithLogitsLoss(pos_weight=tl_loss_weights)
     va_loss = nn.MSELoss()
 
@@ -252,6 +256,7 @@ if __name__ == "__main__":
     config.batch_size = args.batch_size
     config.model = args.backbone_type
     config.loss_weights = args.loss_weights
+    config.tl_weights = args.tl_weights
 
     print("Training...")
     loss_weights = str(args.loss_weights).split(",")
