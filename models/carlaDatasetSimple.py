@@ -8,6 +8,33 @@ from pathlib import Path
 
 class CarlaDatasetSimple(Dataset):
 
+    # moving obstacles (0),  traffic lights (1),  road markers(2),  road (3),  sidewalk (4) and background (5).
+    CLASS_MAPPING = {
+        0: 5,  # None
+        1: 5,  # Buildings
+        2: 5,  # Fences
+        3: 5,  # Other
+        4: 0,  # Pedestrians
+        5: 5,  # Poles
+        6: 2,  # RoadLines
+        7: 3,  # Roads
+        8: 4,  # Sidewalks
+        9: 5,  # Vegetation
+        10: 0,  # Vehicles
+        11: 5,  # Walls
+        12: 5,  # TrafficSigns
+        13: 5,  # Sky
+        14: 5,  # Ground
+        15: 5,  # Bridge
+        16: 5,  # RailTrack
+        17: 5,  # GuardRail
+        18: 1,  # Traffic Light
+        19: 5,  # Static
+        20: 5,  # Dynamic
+        21: 5,  # Water
+        22: 5  # Terrain
+    }
+
     def __init__(self, path: str):
         self.path = path
         self.run_timestamp_mapping = {}
@@ -46,7 +73,7 @@ class CarlaDatasetSimple(Dataset):
     def __getitem__(self, item):
         element = self.timestamps[item]
         run_id = self.run_timestamp_mapping[element]
-        with h5py.File(self.path + ".hdf5", "r") as f:
+        with h5py.File(self.hdf5_path, "r") as f:
             images = f[run_id][element]
             rgb = np.array(images['rgb'])
             depth = np.array(images['depth'])
@@ -63,11 +90,17 @@ class CarlaDatasetSimple(Dataset):
         # get ground truth
         s = semantic[np.newaxis, :, :]
         s = torch.tensor(s, dtype=torch.int8)
+        s = self._map_classes(s)
 
         tl = torch.tensor([1, 0] if data['tl_state'] == 'Green' else [0, 1], dtype=torch.float16)
         v_aff = torch.tensor([data['lane_distance'], data['lane_orientation']]).float()
 
         return x, s, tl, v_aff
+
+    def _map_classes(self, semantic: torch.Tensor) -> torch.Tensor:
+        for k, v in self.CLASS_MAPPING.items():
+            semantic[semantic == k] = v
+        return semantic
 
     def __len__(self):
         return len(self.run_timestamp_mapping)
