@@ -4,6 +4,8 @@ import numpy as np
 import json
 import torch
 from pathlib import Path
+import random
+from torchvision.transforms import transforms
 
 
 class CarlaDatasetSimple(Dataset):
@@ -40,7 +42,10 @@ class CarlaDatasetSimple(Dataset):
         self.run_timestamp_mapping = {}
         self.timestamps = None
         self.metadata = None
-        self.transform = None
+        self.transform = transforms.Compose([
+            transforms.ToTensor()
+        ])
+        self.depth_transform = None
 
         self.hdf5_path = self.read_timestamps()
         self.json_path = self.read_metadata()
@@ -70,6 +75,20 @@ class CarlaDatasetSimple(Dataset):
             self.metadata = json.load(f)
         return json_path
 
+    def get_random_full_episode(self):
+        # select random episode
+        run_id = random.choice(list(self.metadata.keys()))
+        timestamps = self.metadata[run_id].keys()
+        idxs = [self.timestamps.index(t) for t in timestamps]
+        camera, segmentation, traffic_light, vehicle_affordances = [], [], [], []
+        for idx in sorted(idxs):
+            x, s, tl, v_aff = self[idx]
+            camera.append(x)
+            segmentation.append(s)
+            traffic_light.append(tl)
+            vehicle_affordances.append(v_aff)
+        return camera, segmentation, traffic_light, vehicle_affordances
+
     def __getitem__(self, item):
         element = self.timestamps[item]
         run_id = self.run_timestamp_mapping[element]
@@ -80,12 +99,19 @@ class CarlaDatasetSimple(Dataset):
             semantic = np.array(images['semantic'])
 
         data = self.metadata[run_id][element]
-        x = np.concatenate((rgb, depth[:, :, np.newaxis]), axis=2)
-        x = np.transpose(x, axes=[2, 0, 1])
+        # x = np.concatenate((rgb, depth[:, :, np.newaxis]), axis=2)
+        # x = np.transpose(x, axes=[2, 0, 1])
         if self.transform:
-            x = self.transform(x)
+            rgb_transformed = self.transform(rgb)
         else:
-            x = torch.from_numpy(x).float()
+            rgb_transformed = torch.from_numpy(rgb).float()
+        if self.depth_transform:
+            depth_transformed = self.depth_transform(depth)
+        else:
+            depth_transformed = torch.tensor(depth).unsqueeze(0) / 1000
+
+        # stack depth
+        x = torch.cat([depth_transformed, rgb_transformed]).float()
 
         # get ground truth
         s = semantic[np.newaxis, :, :]
@@ -108,4 +134,5 @@ class CarlaDatasetSimple(Dataset):
 
 if __name__ == '__main__':
     d = CarlaDatasetSimple('../dataset')
+    d.get_random_full_episode()
 
