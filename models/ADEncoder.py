@@ -104,6 +104,26 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
 
+class DoubleConv(nn.Module):
+    """(convolution => [BN] => ReLU) * 2"""
+
+    def __init__(self, in_channels, out_channels, mid_channels=None):
+        super().__init__()
+        if not mid_channels:
+            mid_channels = out_channels
+        self.double_conv = nn.Sequential(
+            nn.Conv2d(in_channels, mid_channels, kernel_size=(3, 3), padding=(1, 1)),
+            nn.BatchNorm2d(mid_channels),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(mid_channels, out_channels, kernel_size=(3, 3), padding=(1, 1)),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU(inplace=True)
+        )
+
+    def forward(self, x):
+        return self.double_conv(x)
+
+
 class UpConvBlock(nn.Module):
     """
     x2 space resolution
@@ -111,16 +131,14 @@ class UpConvBlock(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, use_bn: bool = False, **kwargs):
         super(UpConvBlock, self).__init__()
         self.up_conv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=(3, 3), stride=(2, 2), **kwargs)
-        self.non_linear = nn.ReLU()
+        self.double_conv = DoubleConv(out_channels, out_channels)
         self.use_bn = use_bn
-        if use_bn:
-            self.bn = nn.BatchNorm2d(out_channels)
+        # if use_bn:
+        #   self.bn1 = nn.BatchNorm2d(out_channels)
 
     def forward(self, x):
         x = self.up_conv(x)
-        if self.use_bn:
-            x = self.bn(x)
-        x = self.non_linear(x)
+        x = self.double_conv(x)
         return x
 
 

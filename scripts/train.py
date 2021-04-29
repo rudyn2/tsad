@@ -254,11 +254,13 @@ if __name__ == "__main__":
 
     # wandb config specification
     config = wandb.config
+    config.type_dataset = args.dataset
     config.learning_rate = args.lr
     config.batch_size = args.batch_size
     config.model = args.backbone_type
     config.loss_weights = args.loss_weights
     config.tl_weights = args.tl_weights
+    config.optimizer = optimizer.__class__.__name__
 
     print("Training...")
     loss_weights = str(args.loss_weights).split(",")
