@@ -111,7 +111,7 @@ class CarlaDatasetSimple(Dataset):
             depth_transformed = torch.tensor(depth).unsqueeze(0) / 1000
 
         # stack depth
-        x = torch.cat([depth_transformed, rgb_transformed]).float()
+        x = torch.cat([depth_transformed.float(), rgb_transformed]).float()
 
         # get ground truth
         s = semantic[np.newaxis, :, :]
