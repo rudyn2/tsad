@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
-
+import torch.nn.functional as F
 
 class FocalLoss(nn.Module):
     """
@@ -90,17 +90,52 @@ class FocalLoss(nn.Module):
         return loss
 
 
+class WeightedPixelWiseNLLoss(nn.Module):
+    def __init__(self, weights: dict):
+        super(WeightedPixelWiseNLLoss, self).__init__()
+        self.weights = weights
+
+    def _create_weight_map(self, target: torch.Tensor) -> torch.Tensor:
+        weights_ = target.clone().float()
+        for k, w in self.weights.items():
+            weights_[target.eq(k)] = w
+        return weights_
+
+    def forward(self, logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        """
+        :param logits: BxCxHxW
+        :param target: Bx1xHxW
+        """
+        batch_size = logits.shape[0]
+        # Calculate log probabilities
+        logp = F.log_softmax(logits, dim=1)
+
+        # Gather log probabilities with respect to target
+        logp = logp.gather(1, target)
+
+        # Multiply with weights
+        weights = self._create_weight_map(target)
+        weighted_logp = (logp * weights).view(batch_size, -1)
+
+        # Rescale so that loss is in approx. same interval
+        weighted_loss = weighted_logp.sum(1) / weights.view(batch_size, -1).sum(1)
+
+        # Average over mini-batch
+        weighted_loss = -1 * weighted_loss.mean()
+        return weighted_loss
+
+
 if __name__ == '__main__':
     from ADEncoder import ADEncoder
     n_batch = 2
     sample_input = torch.rand((n_batch, 4, 288, 288))
-    model = ADEncoder()
-    expected_seg_output = torch.randint(high=22, size=(n_batch, 1, 288, 288))
+    model = ADEncoder(backbone='efficientnet')
+    expected_seg_output = torch.randint(high=6, size=(n_batch, 1, 288, 288))
     expected_tl_output = torch.empty((n_batch, 2)).random_(2)
     expected_va_output = torch.rand((n_batch, 2))
     y = model(sample_input)
 
-    seg_loss = FocalLoss(apply_nonlin=torch.sigmoid)
+    seg_loss = WeightedPixelWiseNLLoss(weights={0: 0.1, 1: 0.2, 3: 0.1, 4: 0.5, 5: 0.9})
     tl_loss_weights = torch.tensor([0.2, 0.8])
     tl_loss = nn.BCEWithLogitsLoss(pos_weight=tl_loss_weights)
     va_loss = nn.MSELoss()

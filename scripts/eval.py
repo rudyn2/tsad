@@ -2,6 +2,7 @@ import sys
 
 import cv2
 import numpy as np
+import torch
 
 from models.ADEncoder import ADEncoder
 from models.carlaDatasetSimple import CarlaDatasetSimple
@@ -23,6 +24,8 @@ if __name__ == "__main__":
     dataset = CarlaDatasetSimple(args.data)
     model = ADEncoder(backbone=args.backbone, use_bn=True)
     model.to(args.device)
+    model.load_state_dict(torch.load(args.model))
+    model.eval()
 
     print("Showing predictions...\n")
     if args.debug:
