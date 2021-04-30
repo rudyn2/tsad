@@ -208,14 +208,26 @@ class VehicleAffordanceRegressor(nn.Module):
 
 class EfficientNetBackbone(nn.Module):
 
-    def __init__(self):
+    CHANNELS_EFFICIENTNET = {
+        "efficientnet-b0": 1280,
+        "efficientnet-b1": 1280,
+        "efficientnet-b2": 1408,
+        "efficientnet-b3": 1536,
+        "efficientnet-b4": 1792,
+        "efficientnet-b5": 2048,
+        "efficientnet-b6": 2304,
+        "efficientnet-b7": 2560,
+    }
+
+    def __init__(self, name: str = "efficientnet-b1"):
         super(EfficientNetBackbone, self).__init__()
-        self.backbone = EfficientNet.from_name("efficientnet-b1", in_channels=4, include_top=False)
-        self.conv_adjust_channels = torch.nn.Conv2d(1280, 512, kernel_size=(1, 1))
+        self.name = name
+        self.backbone = EfficientNet.from_name(name, in_channels=4, include_top=False)
+        self.conv_adjust_channels = torch.nn.Conv2d(self.CHANNELS_EFFICIENTNET[name], 512, kernel_size=(1, 1))
         self.pool_adjust_dim = torch.nn.AdaptiveAvgPool2d((4, 4))
 
     def forward(self, x):
-        x = self.backbone.extract_endpoints(x)['reduction_6']
+        x = self.backbone.extract_features(x)
         x = self.conv_adjust_channels(x)
         x = self.pool_adjust_dim(x)
         return x
@@ -231,8 +243,8 @@ class ADEncoder(nn.Module):
         assert backbone in ["resnet", "efficientnet"], "Supported backbones: resnet, efficientnet"
         if backbone == "resnet":
             self.backbone = ResNet(ResBlock, [3, 4, 6, 3], 4, 10)
-        elif backbone == "efficientnet":
-            self.backbone = EfficientNetBackbone()
+        elif backbone.startswith("efficientnet"):
+            self.backbone = EfficientNetBackbone(name=backbone)
         self.seg = ImageSegmentationBranch(512, 6, use_bn)
         self.traffic_light_classifier = TrafficLightClassifier()
         self.vehicle_awareness = VehicleAffordanceRegressor()

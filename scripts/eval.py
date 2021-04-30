@@ -30,6 +30,7 @@ if __name__ == "__main__":
     print("Showing predictions...\n")
     if args.debug:
         episode = dataset.get_random_full_episode()
+        print(f"Length episode: {len(episode[0])}")
         for x, s, tl, v_aff in zip(*episode):
             x = x.unsqueeze(0).to(args.device)
             pred = model(x)
@@ -52,7 +53,7 @@ if __name__ == "__main__":
             rgb_input = rgb_depth[:, :, 1:]
             depth = rgb_depth[:, :, 0]
             cv2.imshow('RGB Input', rgb_input)
-            cv2.imshow('Depth', depth2grayscale(depth * 1000))
+            # cv2.imshow('Depth', depth2grayscale(depth * 1000))
             cv2.imshow('Real segmentation', labels_to_cityscapes_palette(real_seg))
             cv2.imshow('Predicted segmentation', labels_to_cityscapes_palette(pred_segmentation))
             cv2.waitKey(100)

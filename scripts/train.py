@@ -215,7 +215,8 @@ if __name__ == "__main__":
     parser.add_argument('--batch-size', default=64, type=int, help='Batch size.')
     parser.add_argument('--use-bn', action="store_true",
                         help='Whether to use batch normalization at upconvolution layers or not.')
-    parser.add_argument('--backbone-type', default="efficientnet", type=str, help='Backbone architecture.')
+    parser.add_argument('--backbone-type', default="efficientnet", type=str,
+                        help='Backbone architecture [resnet, efficientnet-b[0-7]].')
     parser.add_argument('--loss-weights', default="1, 1, 1", type=str,
                         help='Loss weights [segmentation, traffic light status, vehicle affordances ]')
     parser.add_argument('--tl-weights', default="0.2, 0.8", type=str,
