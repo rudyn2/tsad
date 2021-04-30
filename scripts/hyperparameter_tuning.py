@@ -1,5 +1,11 @@
 from ray import tune
 from train import train_for_classification
+import torch
+import torch.nn as nn
+from models.carlaDatasetSimple import CarlaDatasetSimple
+from models.ADEncoder import ADEncoder
+from models.losses import WeightedPixelWiseNLLoss
+from torch import optim
 
 
 def train(config: dict):
@@ -11,50 +17,29 @@ def train(config: dict):
     if use_cuda:
         torch.cuda.manual_seed(0)
 
-    wandb.init(project='tsad', entity='autonomous-driving')
-
-    print("Loading data")
-    if args.dataset == 'cached':
-        dataset = HDF5Dataset(args.data)
-    else:
-        dataset = CarlaDatasetSimple(args.data)
-
-    model = ADEncoder(backbone=args.backbone_type, use_bn=args.use_bn)
+    dataset = CarlaDatasetSimple()
+    model = ADEncoder(backbone="efficientnet-b1", use_bn=True)
     model.to(device)
 
     tl_weights = str(args.tl_weights).split(",")
     tl_weights = [float(s) for s in tl_weights]
 
-    if args.loss_fn == 'focal-loss':
-        seg_loss = FocalLoss(apply_nonlin=torch.sigmoid)
-    else:
-        # moving obstacles (0),  traffic lights (1),  road markers(2),  road (3),  sidewalk (4) and background (5).
-        seg_loss = WeightedPixelWiseNLLoss(weights={
-            0: 0.5,
-            1: 0.1,
-            2: 0.15,
-            3: 0.1,
-            4: 0.1,
-            5: 0.05
+    # moving obstacles (0),  traffic lights (1),  road markers(2),  road (3),  sidewalk (4) and background (5).
+    seg_loss = WeightedPixelWiseNLLoss(weights={
+        0: 0.5,
+        1: 0.1,
+        2: 0.15,
+        3: 0.1,
+        4: 0.1,
+        5: 0.05
 
-        })
+    })
 
     tl_loss_weights = torch.tensor(tl_weights).to(device)
     tl_loss = nn.BCEWithLogitsLoss(pos_weight=tl_loss_weights)
     va_loss = nn.MSELoss()
 
-    optimizer = optim.Adam(model.parameters(), lr=args.lr)
-
-    # wandb config specification
-    config = wandb.config
-    config.type_dataset = args.dataset
-    config.learning_rate = args.lr
-    config.batch_size = args.batch_size
-    config.model = args.backbone_type
-    config.loss_weights = args.loss_weights
-    config.tl_weights = args.tl_weights
-    config.segmentation_loss = args.loss_fn
-    config.optimizer = optimizer.__class__.__name__
+    optimizer = optim.Adam(model.parameters(), lr=0.0001)
 
     print("Training...")
     loss_weights = str(args.loss_weights).split(",")
@@ -63,17 +48,13 @@ def train(config: dict):
                              seg_loss, tl_loss, va_loss,
                              criterion_weights=loss_weights,
                              lr_scheduler=None,
-                             epochs=args.epochs,
-                             batch_size=args.batch_size,
+                             epochs=20,
+                             batch_size=32,
                              reports_every=1,
                              device=device,
                              val_percent=0.1,
                              va_weights=tl_loss_weights,
                              use_wandb=True)
-
-
-    train_for_classification()
-    pass
 
 
 if __name__ == '__main__':

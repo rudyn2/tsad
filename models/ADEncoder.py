@@ -196,7 +196,7 @@ class VehicleAffordanceRegressor(nn.Module):
         super(VehicleAffordanceRegressor, self).__init__()
         self.fc1 = nn.Linear(512 * 4 * 4, 512)
         self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(512, 2)
+        self.fc2 = nn.Linear(512, 1)
 
     def forward(self, x):
         x = self.fc1(x)
@@ -246,7 +246,8 @@ class ADEncoder(nn.Module):
             self.backbone = EfficientNetBackbone(name=backbone)
         self.seg = ImageSegmentationBranch(512, 6, use_bn)
         self.traffic_light_classifier = TrafficLightClassifier()
-        self.vehicle_awareness = VehicleAffordanceRegressor()
+        self.vehicle_position = VehicleAffordanceRegressor()
+        self.vehicle_orientation = VehicleAffordanceRegressor()
 
     # @pytorch_memlab.profile
     def forward(self, x):
@@ -254,10 +255,11 @@ class ADEncoder(nn.Module):
         seg_img = self.seg(embedding)
         flatten_embedding = torch.flatten(embedding, 1)
         traffic_light_status = self.traffic_light_classifier(flatten_embedding)
-        vehicle_affordances = self.vehicle_awareness(flatten_embedding)
+        vehicle_position = self.vehicle_position(flatten_embedding)
+        vehicle_orientation = self.vehicle_orientation(flatten_embedding)
         return {'segmentation': seg_img,
                 'traffic_light_status': traffic_light_status,
-                'vehicle_affordances': vehicle_affordances}
+                'vehicle_affordances': torch.cat([vehicle_position, vehicle_orientation], dim=1)}
 
     def encode(self, x):
         x = self.backbone(x)
