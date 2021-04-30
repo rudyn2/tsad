@@ -111,7 +111,7 @@ class WeightedPixelWiseNLLoss(nn.Module):
         logp = F.log_softmax(logits, dim=1)
 
         # Gather log probabilities with respect to target
-        logp = logp.gather(1, target)
+        logp = logp.gather(1, target.type(torch.cuda.LongTensor))
 
         # Multiply with weights
         weights = self._create_weight_map(target)
