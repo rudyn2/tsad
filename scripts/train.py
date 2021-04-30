@@ -204,7 +204,7 @@ if __name__ == "__main__":
     from models.ADEncoder import ADEncoder
     from models.carlaDataset import HDF5Dataset
     from models.carlaDatasetSimple import CarlaDatasetSimple
-    from models.losses import FocalLoss, WeightedPixelWiseNLLoss
+    from models.losses import FocalLoss, WeightedPixelWiseNLLoss, DiceLoss
     import argparse
 
     parser = argparse.ArgumentParser(description="Train model utility",
@@ -221,7 +221,8 @@ if __name__ == "__main__":
                         help='Loss weights [segmentation, traffic light status, vehicle affordances ]')
     parser.add_argument('--tl-weights', default="0.2, 0.8", type=str,
                         help='Traffic light weights [Green, Red]')
-    parser.add_argument('--loss-fn', default='focal-loss', type=str, help='Loss function [focal-loss, wce] used for '
+    parser.add_argument('--loss-fn', default='focal-loss', type=str, help='Loss function [focal-loss, wce, dice] '
+                                                                          'used for '
                                                                           'semantic segmentation')
     parser.add_argument('--epochs', default=20, type=int, help='Number of epochs.')
     parser.add_argument('--lr', default=0.0001, type=float, help='Learning rate.')
@@ -251,6 +252,8 @@ if __name__ == "__main__":
 
     if args.loss_fn == 'focal-loss':
         seg_loss = FocalLoss(apply_nonlin=torch.sigmoid)
+    elif args.loss_fn == 'dice':
+        seg_loss = DiceLoss()
     else:
         # moving obstacles (0),  traffic lights (1),  road markers(2),  road (3),  sidewalk (4) and background (5).
         seg_loss = WeightedPixelWiseNLLoss(weights={
