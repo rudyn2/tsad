@@ -240,7 +240,6 @@ class ADEncoder(nn.Module):
 
     def __init__(self, backbone: str, use_bn: bool = False):
         super(ADEncoder, self).__init__()
-        assert backbone in ["resnet", "efficientnet"], "Supported backbones: resnet, efficientnet"
         if backbone == "resnet":
             self.backbone = ResNet(ResBlock, [3, 4, 6, 3], 4, 10)
         elif backbone.startswith("efficientnet"):
