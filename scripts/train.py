@@ -14,17 +14,13 @@ def train_for_classification(net, dataset, optimizer,
                              reports_every: int = 1,
                              device: torch.device = 'cuda',
                              val_percent: float = 0.1,
-                             use_wandb=False,
-                             va_weights=None):
-    if va_weights is None:
-        va_weights = torch.Tensor([0.5, 0.5]).to(device)
+                             use_wandb=False):
+
     net.to(device)
     n_val = int(len(dataset) * val_percent)
     n_train = len(dataset) - n_val
     train, val = random_split(dataset, [n_train, n_val])
     train_loader = DataLoader(train, batch_size=batch_size, shuffle=True, num_workers=2, pin_memory=True)
-    # val_loader = DataLoader(val, batch_size=int(batch_size / 8),
-    # shuffle=False, num_workers=2, pin_memory=True, drop_last=True)
     val_loader = DataLoader(val, batch_size=batch_size, shuffle=False, num_workers=2, pin_memory=True, drop_last=True)
 
     tiempo_epochs = 0
@@ -43,7 +39,6 @@ def train_for_classification(net, dataset, optimizer,
 
         for i, (x, s, tl, v_aff) in enumerate(train_loader):
 
-            # x, s, tl, v_aff = x.to(device), s.to(device), tl.to(device), v_aff.to(device)
             x = x.to(device)
             s = s.to(device)
             tl = tl.to(device)
@@ -116,7 +111,8 @@ def train_for_classification(net, dataset, optimizer,
                                                                                                  seg_criterion,
                                                                                                  tl_criterion,
                                                                                                  va_criterion,
-                                                                                                 val_loader, va_weights)
+                                                                                                 val_loader,
+                                                                                                 criterion_weights)
             test_loss.append([avg_tl_acc, avg_seg_acc, avg_va_loss])
             sys.stdout.write(f', Val[Loss:{avg_loss:02.4f}, '
                              + f'TL Acc:{avg_tl_acc:02.2f}%, '
@@ -150,7 +146,8 @@ def train_for_classification(net, dataset, optimizer,
     return train_loss, (train_acc, test_loss)
 
 
-def eval_net(device, net, seg_criterion, tl_criterion, val_criterion, test_loader, va_weights):
+def eval_net(device, net, seg_criterion, tl_criterion, val_criterion, test_loader,
+             criterion_weights: tuple = (1, 1, 1)):
     net.eval()
     running_tl_acc, running_seg_acc, running_va_loss, running_loss = 0.0, 0.0, 0.0, 0.0
     running_seg_loss, running_tl_loss = 0.0, 0.0
@@ -166,7 +163,7 @@ def eval_net(device, net, seg_criterion, tl_criterion, val_criterion, test_loade
         l1 = seg_criterion(y['segmentation'], s)
         l2 = tl_criterion(y['traffic_light_status'], tl)
         l3 = val_criterion(y['vehicle_affordances'], v_aff)
-        loss = l1 + l2 + l3
+        loss = criterion_weights[0] * l1 + criterion_weights[1] * l2 + criterion_weights[2] * l3
 
         running_loss += loss.item()
         running_seg_loss += l1.item()
@@ -255,7 +252,12 @@ if __name__ == "__main__":
     elif args.loss_fn == 'dice':
         seg_loss = DiceLoss()
     else:
-        # moving obstacles (0),  traffic lights (1),  road markers(2),  road (3),  sidewalk (4) and background (5).
+        # moving obstacles (0),
+        # traffic lights (1),
+        # road markers(2),
+        # road (3),
+        # sidewalk (4) and
+        # background (5).
         seg_loss = WeightedPixelWiseNLLoss(weights={
             0: 0.5,
             1: 0.1,
@@ -294,6 +296,5 @@ if __name__ == "__main__":
                              batch_size=args.batch_size,
                              reports_every=1,
                              device=device,
-                             val_percent=0.1,
-                             va_weights=tl_loss_weights,
+                             val_percent=0.05,
                              use_wandb=True)

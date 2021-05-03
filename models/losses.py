@@ -128,6 +128,12 @@ class WeightedPixelWiseNLLoss(nn.Module):
         return weighted_loss
 
 
+"""
+FOLLOWING CODE IS BORROWED FROM:
+https://kornia.readthedocs.io/en/v0.1.2/_modules/torchgeometry/losses/dice.html
+"""
+
+
 def one_hot(labels: torch.Tensor,
             num_classes: int,
             device: Optional[torch.device] = None,
@@ -222,7 +228,7 @@ class DiceLoss(nn.Module):
             self,
             input: torch.Tensor,
             target: torch.Tensor) -> torch.Tensor:
-        target = target.squeeze(1).type(torch.cuda.LongTensor)      # ADDED FOR COMPATIBILITY
+        target = target.squeeze(1).type(torch.cuda.LongTensor)  # ADDED FOR COMPATIBILITY
         if not torch.is_tensor(input):
             raise TypeError("Input type is not a torch.Tensor. Got {}"
                             .format(type(input)))
