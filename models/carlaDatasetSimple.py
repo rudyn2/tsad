@@ -75,6 +75,12 @@ class CarlaDatasetSimple(Dataset):
             self.metadata = json.load(f)
         return json_path
 
+    def get_metadata(self):
+        return self.metadata
+
+    def get_timestamps(self):
+        return self.timestamps
+
     def get_random_full_episode(self):
         # select random episode
         run_id = random.choice(list(self.metadata.keys()))
