@@ -54,11 +54,14 @@ class Extractor:
 
         for run_id in tqdm(metadata.keys(), "Encoding..."):
             timestamps = metadata[run_id].keys()
-            if len(timestamps) == 0:
-                print(f"Couldn't find keys for run id: {run_id}. Skipping...")
-            idxs = [timestamps_map.index(t) for t in timestamps]
-            data = self.extract_single(timestamps, idxs)
-            self._hdf5_handler.write_batch(run_id, data)
+            try:
+                if len(timestamps) == 0:
+                    print(f"Couldn't find keys for run id: {run_id}. Skipping...")
+                idxs = [timestamps_map.index(t) for t in timestamps]
+                data = self.extract_single(timestamps, idxs)
+                self._hdf5_handler.write_batch(run_id, data)
+            except ValueError as e:
+                print(f"Couldn't process run with id: {run_id}")
 
     def extract_batch(self, timestamps, indexes):
         """
