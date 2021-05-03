@@ -5,6 +5,10 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
+import sys
+
+sys.path.append('..')
+sys.path.append('.')
 
 from models.ADEncoder import ADEncoder
 from models.carlaDatasetSimple import CarlaDatasetSimple
