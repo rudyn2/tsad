@@ -183,6 +183,23 @@ class TrafficLightClassifier(nn.Module):
         x = self.fc2(x)
         return x
 
+class PedestrianClassifier(nn.Module):
+    """
+    Pedestrian Classifier: Exists or not.
+    """
+
+    def __init__(self):
+        super(PedestrianClassifier, self).__init__()
+        self.fc1 = nn.Linear(512 * 4 * 4, 512)
+        self.relu = nn.ReLU()
+        self.fc2 = nn.Linear(512, 2)
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.fc2(x)
+        return x
+
 
 class VehicleAffordanceRegressor(nn.Module):
     """
@@ -246,6 +263,7 @@ class ADEncoder(nn.Module):
             self.backbone = EfficientNetBackbone(name=backbone)
         self.seg = ImageSegmentationBranch(512, 6, use_bn)
         self.traffic_light_classifier = TrafficLightClassifier()
+        self.pedestrian_classifier = PedestrianClassifier()
         self.vehicle_position = VehicleAffordanceRegressor()
         self.vehicle_orientation = VehicleAffordanceRegressor()
 
@@ -257,9 +275,11 @@ class ADEncoder(nn.Module):
         traffic_light_status = self.traffic_light_classifier(flatten_embedding)
         vehicle_position = self.vehicle_position(flatten_embedding)
         vehicle_orientation = self.vehicle_orientation(flatten_embedding)
+        pedestrian = self.pedestrian_classifier(flatten_embedding)
         return {'segmentation': seg_img,
                 'traffic_light_status': traffic_light_status,
-                'vehicle_affordances': torch.cat([vehicle_position, vehicle_orientation], dim=1)}
+                'vehicle_affordances': torch.cat([vehicle_position, vehicle_orientation], dim=1),
+                'pedestrian': pedestrian}
 
     def encode(self, x):
         x = self.backbone(x)
