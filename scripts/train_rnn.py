@@ -3,7 +3,7 @@ import sys
 sys.path.append('.')
 sys.path.append('..')
 
-from models.carlaEmbeddingDataset import CarlaEmbeddingDataset, PadSequence
+from models.carlaEmbeddingDataset import CarlaEmbeddingDataset, CarlaOnlineEmbeddingDataset, PadSequence
 from models.TemporalEncoder import RNNEncoder
 
 
@@ -14,7 +14,7 @@ if __name__ == '__main__':
     torch.cuda.empty_cache()
 
     device = 'cuda'
-    d = CarlaEmbeddingDataset(embeddings_path='../embeddings.hdf5', json_path='../dataset/sample6.json')
+    d = CarlaOnlineEmbeddingDataset(embeddings_path='../embeddings.hdf5', json_path='../dataset/sample6.json')
     n_val = int(len(d) * 0.1)
     n_train = len(d) - n_val
     train, val = random_split(d, [n_train, n_val])
@@ -56,9 +56,9 @@ if __name__ == '__main__':
                 loss = mse_loss(pred, embeddings_label)
                 val_total_loss += loss.item()
 
-            avg_val_loss = val_total_loss / len(val_loader)
-            sys.stdout.write(f", Validation loss: {avg_val_loss:.5f}")
-            sys.stdout.flush()
+        avg_val_loss = val_total_loss / len(val_loader)
+        sys.stdout.write(f", Validation loss: {avg_val_loss:.5f}")
+        sys.stdout.flush()
         sys.stdout.write('\n')
 
 

@@ -4,6 +4,7 @@ import h5py
 import numpy as np
 import torch
 from torch.utils.data import Dataset
+from tqdm import tqdm
 
 
 class PadSequence:
@@ -61,6 +62,30 @@ class CarlaEmbeddingDataset(Dataset):
 
     def __len__(self):
         return sum([len(self._metadata[k]) // 4 for k in self._metadata.keys()])
+
+
+class CarlaOnlineEmbeddingDataset(Dataset):
+    def __init__(self, embeddings_path: str, json_path: str):
+        super(Dataset, self).__init__()
+        self._source_dataset = CarlaEmbeddingDataset(embeddings_path, json_path)
+        org_length = self._source_dataset
+        self._sequences = [None] * len(org_length)
+        self._actions = [None] * len(org_length)
+        self._labels = [None] * len(org_length)
+        self._load_all()
+
+    def __getitem__(self, item):
+        return self._sequences[item], self._actions[item], self._labels[item]
+
+    def __len__(self):
+        return len(self._sequences)
+
+    def _load_all(self):
+        for i in tqdm(range(len(self._source_dataset)), "Loading dataset"):
+            s, a, s1 = self._source_dataset[i]
+            self._sequences[i] = s
+            self._actions[i] = a
+            self._labels[i] = s1
 
 
 if __name__ == '__main__':
