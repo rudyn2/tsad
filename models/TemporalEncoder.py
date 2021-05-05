@@ -8,7 +8,7 @@ class RNNEncoder(nn.Module):
         super(RNNEncoder, self).__init__()
         self.hidden_size = hidden_size
         self.lstm = nn.LSTM(input_size=8192, hidden_size=hidden_size, batch_first=True)
-        self.output = nn.Linear(hidden_size+3, 8192)
+        self.output = nn.Linear(hidden_size + 3, 8192)
 
     def forward(self, embedding, action, embedding_length):
         """

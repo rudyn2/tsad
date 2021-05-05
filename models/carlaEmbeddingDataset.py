@@ -91,7 +91,7 @@ class CarlaOnlineEmbeddingDataset(Dataset):
 if __name__ == '__main__':
     from torch.utils.data import DataLoader
 
-    d = CarlaEmbeddingDataset(embeddings_path='../embeddings.hdf5', json_path='../dataset/sample6.json')
+    d = CarlaOnlineEmbeddingDataset(embeddings_path='../scripts/embeddings.hdf5', json_path='../dataset/sample6.json')
     loader = DataLoader(d, batch_size=8, collate_fn=PadSequence(), drop_last=True)
 
     for batch in loader:
