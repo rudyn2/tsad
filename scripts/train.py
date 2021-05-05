@@ -33,7 +33,7 @@ def train_for_classification(net, dataset, optimizer,
         net.train()
 
         # Variables para las métricas
-        running_tl_acc, running_seg_acc = 0.0, 0.0
+        running_tl_acc, running_seg_acc, running_pd_acc = 0.0, 0.0, 0.0
         running_seg_loss, running_tl_loss, running_va_loss, running_pd_loss, running_loss = 0.0, 0.0, 0.0, 0.0, 0.0
         avg_tl_acc, avg_seg_acc, avg_va_loss, avg_loss, avg_tl_loss, avg_pd_acc, avg_pd_loss, avg_seg_loss = 0, 0, 0, 0, 0, 0, 0, 0
 
@@ -43,6 +43,7 @@ def train_for_classification(net, dataset, optimizer,
             s = s.to(device)
             tl = tl.to(device)
             v_aff = v_aff.to(device)
+            pds = pds.to(device)
 
             # optimization step
             optimizer.zero_grad()
@@ -91,7 +92,7 @@ def train_for_classification(net, dataset, optimizer,
                              + f'Train[Loss:{avg_loss:02.5f}, '
                              + f'SEG Acc:{avg_seg_acc:02.1f}%, '
                              + f'TL Acc:{avg_tl_acc:02.1f}%, '
-                             + f'VA Loss: {avg_va_loss:02.5f}]'
+                             + f'VA Loss: {avg_va_loss:02.5f}, '
                              + f'PED Acc: {avg_pd_acc:02.1f}%')
             if use_wandb:
                 wandb.log({'train/loss': float(avg_loss), 'train/acc TL': float(avg_tl_acc), 
@@ -174,7 +175,7 @@ def eval_net(device, net, seg_criterion, tl_criterion, val_criterion, pd_criteri
     avg_loss, avg_seg_loss, avg_tl_loss, avg_va_loss, avg_pd_loss = 0, 0, 0, 0, 0
 
     for i, (x, s, tl, v_aff, pds) in enumerate(test_loader):
-        x, s, tl, v_aff = x.to(device), s.to(device), tl.to(device), v_aff.to(device)
+        x, s, tl, v_aff, pds = x.to(device), s.to(device), tl.to(device), v_aff.to(device), pds.to(device)
 
         with torch.no_grad():
             y = net(x)
@@ -207,7 +208,6 @@ def eval_net(device, net, seg_criterion, tl_criterion, val_criterion, pd_criteri
         # accuracy of pedestrians
         _, max_idx = torch.max(y['pedestrian'], dim=1)
         running_pd_acc += torch.sum(max_idx == torch.argmax(tl, dim=1)).item()
-        avg_pd_acc = running_pd_acc / items * 100
 
         total_test += x.shape[0]
 
@@ -292,12 +292,11 @@ if __name__ == "__main__":
             3: 0.1,
             4: 0.1,
             5: 0.05
-
         })
 
     tl_loss_weights = torch.tensor(tl_weights).to(device)
     tl_loss = nn.BCEWithLogitsLoss(pos_weight=tl_loss_weights)
-    pd_loss_weights = torch.tensor([0.2, 0.8])
+    pd_loss_weights = torch.tensor([0.2, 0.8]).to(device)
     pd_loss = nn.BCEWithLogitsLoss(pos_weight=pd_loss_weights)
     va_loss = nn.MSELoss()
 
