@@ -44,7 +44,7 @@ if __name__ == '__main__':
 
     tag = ''    # tag = '*' if the model was saved in the last epoch
     best_val_loss = 1e100
-    for epoch in range(100):
+    for epoch in range(args.epochs):
 
         # Train
         train_total_loss = 0
