@@ -16,7 +16,7 @@ class CarlaDatasetSimple(Dataset):
         1: 5,  # Buildings
         2: 5,  # Fences
         3: 5,  # Other
-        4: 0,  # Pedestrians
+        4: 6,  # Pedestrians
         5: 5,  # Poles
         6: 2,  # RoadLines
         7: 3,  # Roads
@@ -127,7 +127,7 @@ class CarlaDatasetSimple(Dataset):
 
         tl = torch.tensor([1, 0] if data['tl_state'] == 'Green' else [0, 1], dtype=torch.float16)
         v_aff = torch.tensor([data['lane_distance'], data['lane_orientation']]).float()
-        sum_pds = (s == 0).sum()
+        sum_pds = (s == 6).sum()
         pds = torch.tensor([1, 0] if sum_pds > 0 else [0, 1]).float()
 
         return x, s, tl, v_aff, pds

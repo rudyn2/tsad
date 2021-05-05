@@ -286,12 +286,13 @@ if __name__ == "__main__":
         # sidewalk (4) and
         # background (5).
         seg_loss = WeightedPixelWiseNLLoss(weights={
-            0: 0.5,
+            0: 0.3,
             1: 0.1,
             2: 0.15,
             3: 0.1,
             4: 0.1,
-            5: 0.05
+            5: 0.05,
+            6: 0.5
         })
 
     tl_loss_weights = torch.tensor(tl_weights).to(device)
