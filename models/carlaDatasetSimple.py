@@ -16,7 +16,7 @@ class CarlaDatasetSimple(Dataset):
         1: 5,  # Buildings
         2: 5,  # Fences
         3: 5,  # Other
-        4: 0,  # Pedestrians
+        4: 6,  # Pedestrians
         5: 5,  # Poles
         6: 2,  # RoadLines
         7: 3,  # Roads
@@ -86,14 +86,15 @@ class CarlaDatasetSimple(Dataset):
         run_id = random.choice(list(self.metadata.keys()))
         timestamps = self.metadata[run_id].keys()
         idxs = [self.timestamps.index(t) for t in timestamps]
-        camera, segmentation, traffic_light, vehicle_affordances = [], [], [], []
+        camera, segmentation, traffic_light, vehicle_affordances, pedestrian = [], [], [], [], []
         for idx in sorted(idxs):
-            x, s, tl, v_aff = self[idx]
+            x, s, tl, v_aff, pds = self[idx]
             camera.append(x)
             segmentation.append(s)
             traffic_light.append(tl)
             vehicle_affordances.append(v_aff)
-        return camera, segmentation, traffic_light, vehicle_affordances
+            pedestrian.append(pds)
+        return camera, segmentation, traffic_light, vehicle_affordances, pedestrian
 
     def __getitem__(self, item):
         element = self.timestamps[item]
@@ -126,8 +127,10 @@ class CarlaDatasetSimple(Dataset):
 
         tl = torch.tensor([1, 0] if data['tl_state'] == 'Green' else [0, 1], dtype=torch.float16)
         v_aff = torch.tensor([data['lane_distance'], data['lane_orientation']]).float()
+        sum_pds = (s == 6).sum()
+        pds = torch.tensor([1, 0] if sum_pds > 0 else [0, 1]).float()
 
-        return x, s, tl, v_aff
+        return x, s, tl, v_aff, pds
 
     def _map_classes(self, semantic: torch.Tensor) -> torch.Tensor:
         for k, v in self.CLASS_MAPPING.items():
@@ -139,6 +142,6 @@ class CarlaDatasetSimple(Dataset):
 
 
 if __name__ == '__main__':
-    d = CarlaDatasetSimple('../dataset')
-    d.get_random_full_episode()
+    d = CarlaDatasetSimple('./dataset')
+    print(d.get_random_full_episode())
 
