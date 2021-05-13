@@ -4,10 +4,10 @@ import torch
 
 
 class RNNEncoder(nn.Module):
-    def __init__(self, hidden_size: int = 2046):
+    def __init__(self, num_layers: int = 2, hidden_size: int = 2046):
         super(RNNEncoder, self).__init__()
         self.hidden_size = hidden_size
-        self.lstm = nn.LSTM(input_size=8192, hidden_size=hidden_size, batch_first=True)
+        self.lstm = nn.LSTM(input_size=8192, hidden_size=hidden_size, batch_first=True, num_layers=num_layers)
         self.output = nn.Linear(hidden_size + 3, 8192)
 
     def forward(self, embedding, action, embedding_length):

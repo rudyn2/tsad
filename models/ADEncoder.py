@@ -267,7 +267,6 @@ class ADEncoder(nn.Module):
         self.vehicle_position = VehicleAffordanceRegressor()
         self.vehicle_orientation = VehicleAffordanceRegressor()
 
-    # @pytorch_memlab.profile
     def forward(self, x):
         embedding = self.backbone(x)  # 512x4x4
         seg_img = self.seg(embedding)
