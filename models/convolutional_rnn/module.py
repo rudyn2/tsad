@@ -133,7 +133,7 @@ class ConvNdRNNBase(torch.nn.Module):
     def forward(self, input, hx=None):
         is_packed = isinstance(input, PackedSequence)
         if is_packed:
-            input, batch_sizes = input
+            input, batch_sizes = input.data, input.batch_sizes
             max_batch_size = batch_sizes[0]
             insize = input.shape[2:]
         else:
