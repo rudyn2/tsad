@@ -15,7 +15,7 @@ if __name__ == "__main__":
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--data', default='../dataset', type=str, help='Path to dataset folder')
     parser.add_argument('--model', required=True, type=str, help='Path to model weights')
-    parser.add_argument('--backbone', default='efficientnet', type=str, help='Type of backbone')
+    parser.add_argument('--backbone', default='efficientnet-b5', type=str, help='Type of backbone')
     parser.add_argument('--device', default='cuda', type=str, help='Device to be used for evaluation')
     parser.add_argument('--debug', default='store_true', help='If true you can visualize results from one episode')
     args = parser.parse_args()
@@ -58,5 +58,4 @@ if __name__ == "__main__":
             cv2.imshow('Predicted segmentation', labels_to_cityscapes_palette(pred_segmentation))
             cv2.waitKey(100)
         cv2.destroyAllWindows()
-
     # evaluate metrics

@@ -5,7 +5,7 @@ import torch
 
 
 class RNNEncoder(nn.Module):
-    def __init__(self, hidden_size: int = 2046):
+    def __init__(self, num_layers: int = 2, hidden_size: int = 2046):
         super(RNNEncoder, self).__init__()
         self.hidden_size = hidden_size
         self.lstm = Conv2dLSTM(

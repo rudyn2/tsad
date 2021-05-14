@@ -1,11 +1,12 @@
-
 import sys
+
 sys.path.append('.')
 sys.path.append('..')
 
-from models.carlaEmbeddingDataset import CarlaEmbeddingDataset, CarlaOnlineEmbeddingDataset, PadSequence
+from models.carlaEmbeddingDataset import CarlaOnlineEmbeddingDataset, PadSequence, CarlaEmbeddingDataset
 from models.TemporalEncoder import RNNEncoder
-
+import argparse
+import wandb
 
 if __name__ == '__main__':
     from torch.utils.data import DataLoader, random_split
@@ -13,42 +14,77 @@ if __name__ == '__main__':
 
     torch.cuda.empty_cache()
 
-    device = 'cuda'
-    d = CarlaOnlineEmbeddingDataset(embeddings_path='../embeddings.hdf5', json_path='../dataset/sample6.json')
-    n_val = int(len(d) * 0.1)
-    n_train = len(d) - n_val
-    train, val = random_split(d, [n_train, n_val])
-    train_loader = DataLoader(train, batch_size=32, collate_fn=PadSequence())
-    val_loader = DataLoader(val, batch_size=8, collate_fn=PadSequence())
+    parser = argparse.ArgumentParser(description="Train model utility",
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--embeddings', default='../dataset/embeddings.hdf5', type=str, help='Path to embeddings hdf5')
+    parser.add_argument('--metadata', default='../dataset/carla_dataset.json', type=str, help='Path to json file')
+    parser.add_argument('--dataset', default='online', type=str, help='Type of dataset. online: all the dataset will'
+                                                                      'be loaded into memory. offline: the embeddings'
+                                                                      'will be loaded lazily')
+    parser.add_argument('--hidden-size', default=1028, type=int, help='LSTM hidden size')
+    parser.add_argument('--batch-size', default=32, type=int, help='Batch size')
+    parser.add_argument('--epochs', default=20, type=int, help='Epochs')
+    parser.add_argument('--val-size', default=0.1, type=float,
+                        help='Ratio of train dataset that will be used for validation')
+    parser.add_argument('--lr', default=0.0001, type=float, help='Learning rate')
+    parser.add_argument('--device', default='cuda', type=str, help='device')
+
+    args = parser.parse_args()
+
+    wandb.init(project='tsad', entity='autonomous-driving')
+
+    device = args.device
+    if args.dataset == 'online':
+        dataset = CarlaOnlineEmbeddingDataset(embeddings_path=args.embeddings, json_path=args.metadata)
+    else:
+        dataset = CarlaEmbeddingDataset(embeddings_path=args.embeddings, json_path=args.metadata)
+    n_val = int(len(dataset) * 0.1)
+    n_train = len(dataset) - n_val
+    train, val = random_split(dataset, [n_train, n_val])
+    train_loader = DataLoader(train, batch_size=args.batch_size, collate_fn=PadSequence())
+    val_loader = DataLoader(val, batch_size=args.batch_size, collate_fn=PadSequence())
     mse_loss = torch.nn.MSELoss()
 
-    model = RNNEncoder(hidden_size=1028)
-    model.to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+    model = RNNEncoder(hidden_size=args.hidden_size)
+    model.to(args.device)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
-    step = 0
-    for epoch in range(10):
+    config = wandb.config
+    config.model = model.__class__.__name__
+    config.device = device
+    config.batch_size = args.batch_size
+    config.hidden_size = args.hidden_size
+    config.epochs = args.epochs
+    config.learning_rate = args.lr
+
+    tag = ''  # tag = '*' if the model was saved in the last epoch
+    best_val_loss = 1e100
+    for epoch in range(args.epochs):
 
         # Train
         train_total_loss = 0
-        for embeddings, embeddings_length, actions, embeddings_label in train_loader:
-            embeddings, embeddings_label, actions = embeddings.to(device), embeddings_label.to(device), actions.to(device)
+        for i, (embeddings, embeddings_length, actions, embeddings_label) in enumerate(train_loader):
+            embeddings, embeddings_label, actions = embeddings.to(device), embeddings_label.to(device), actions.to(
+                device)
             pred = model(embeddings, actions, embeddings_length)
 
             optimizer.zero_grad()
-            loss = mse_loss(pred,  embeddings_label)
+            loss = mse_loss(pred, embeddings_label)
             loss.backward()
             optimizer.step()
             train_total_loss += loss.item()
 
+            avg_train_loss = train_total_loss / (i + 1)
+            sys.stdout.write('\r')
+            sys.stdout.write(f"{tag}Epoch: {epoch + 1}({i}/{len(train_loader)})| Train loss: {avg_train_loss:.5f}")
+            wandb.log({'train/loss': avg_train_loss})
+
         avg_train_loss = train_total_loss / len(train_loader)
-        sys.stdout.write('\r')
-        sys.stdout.write(f"Epoch: {epoch + 1} | Train loss: {avg_train_loss:.5f}")
-        step += pred.shape[0]
+        wandb.log({'train/loss': avg_train_loss, 'epoch': epoch + 1})
 
         # Validate
-        for embeddings, embeddings_length, actions, embeddings_label in train_loader:
-            val_total_loss = 0
+        val_total_loss = 0
+        for embeddings, embeddings_length, actions, embeddings_label in val_loader:
             with torch.no_grad():
                 embeddings, embeddings_label, actions = embeddings.to(device), embeddings_label.to(device), actions.to(
                     device)
@@ -57,8 +93,16 @@ if __name__ == '__main__':
                 val_total_loss += loss.item()
 
         avg_val_loss = val_total_loss / len(val_loader)
+        wandb.log({'val/loss': avg_val_loss, 'epoch': epoch + 1})
+
+        # checkpointing
+        if avg_val_loss < best_val_loss:
+            best_val_loss = avg_val_loss
+            model_name = f"best_{model.__class__.__name__}.pth"
+            torch.save(model.state_dict(), model_name)
+            wandb.save(model_name)
+            tag = '*'
+
         sys.stdout.write(f", Validation loss: {avg_val_loss:.5f}")
         sys.stdout.flush()
         sys.stdout.write('\n')
-
-
