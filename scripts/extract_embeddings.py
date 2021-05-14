@@ -82,7 +82,8 @@ class Extractor:
             item = item.detach().cpu().numpy()
             item = idx2timestamp_v(item)
             items.append(item)
-            embeddings.append(torch.flatten(embedding, start_dim=1).detach().cpu().numpy())
+            #embeddings.append(torch.flatten(embedding, start_dim=1).detach().cpu().numpy())
+            embeddings.append(embedding.detach().cpu().numpy())
 
     def extract_single(self, timestamps, indexes):
         """
@@ -92,7 +93,8 @@ class Extractor:
         for idx, t in zip(indexes, timestamps):
             x = self._dataset[idx][0].unsqueeze(0).to(self.__device)
             embedding = self._model.encode(x)
-            embedding = torch.flatten(embedding, start_dim=0).detach().cpu().numpy()
+            #embedding = torch.flatten(embedding, start_dim=0).detach().cpu().numpy()
+            embedding = embedding.detach().cpu().numpy()
             data[t] = embedding
         return data
 
