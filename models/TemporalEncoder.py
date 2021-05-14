@@ -1,4 +1,5 @@
 from torch.nn.utils.rnn import pack_padded_sequence
+from convolutional_rnn import Conv2dLSTM
 import torch.nn as nn
 import torch
 
@@ -11,7 +12,11 @@ class RNNEncoder(nn.Module):
             in_channels=512,  # Corresponds to input size
             out_channels=hidden_size,  # Corresponds to hidden size
             kernel_size=3,  # Int or List[int]
+<<<<<<< HEAD
             num_layers=num_layers,
+=======
+            num_layers=2,
+>>>>>>> b1961e6ea4ad2b7bb4949218ef82f8aaec74697f
             bidirectional=True,
             dilation=2, stride=2, dropout=0.5,
             batch_first=True)
