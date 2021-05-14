@@ -24,7 +24,7 @@ class RNNEncoder(nn.Module):
         Output dim: BxHiddenSize
         """
         x_pack = pack_padded_sequence(embedding, embedding_length, batch_first=True)
-        h = None
+        print(self.lstm(x_pack, h))
         _, hidden = self.lstm(x_pack, h)
         hidden = hidden[0].squeeze(0)
         hidden_cat_action = torch.cat([hidden, action], dim=1)
