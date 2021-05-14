@@ -67,6 +67,7 @@ if __name__ == '__main__':
             embeddings, embeddings_label, actions = embeddings.to(device), embeddings_label.to(device), actions.to(
                 device)
             pred = model(embeddings, actions, embeddings_length)
+            print(pred.shape)
 
             optimizer.zero_grad()
             loss = mse_loss(pred, embeddings_label)
