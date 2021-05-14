@@ -14,7 +14,7 @@ class RNNEncoder(nn.Module):
             kernel_size=3,  # Int or List[int]
             num_layers=num_layers,
             bidirectional=True,
-            dilation=2, stride=2, dropout=0.5,
+            stride=2, #dropout=0.5, dilation=2, 
             batch_first=True)
         #self.lstm = nn.LSTM(input_size=512, hidden_size=hidden_size, batch_first=True)
         self.output = nn.Linear(hidden_size+3, 512)
@@ -25,7 +25,7 @@ class RNNEncoder(nn.Module):
         """
         x_pack = pack_padded_sequence(embedding, embedding_length, batch_first=True)
         h = None
-        print(self.lstm(x_pack, h))
+        print(x_pack)
         _, hidden = self.lstm(x_pack, h)
         hidden = hidden[0].squeeze(0)
         hidden_cat_action = torch.cat([hidden, action], dim=1)
