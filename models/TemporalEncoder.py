@@ -1,5 +1,5 @@
 from torch.nn.utils.rnn import pack_padded_sequence
-from convolutional_rnn import Conv2dLSTM
+from .convolutional_rnn import Conv2dLSTM
 import torch.nn as nn
 import torch
 
