@@ -11,7 +11,7 @@ class RNNEncoder(nn.Module):
             in_channels=512,  # Corresponds to input size
             out_channels=hidden_size,  # Corresponds to hidden size
             kernel_size=3,  # Int or List[int]
-            num_layers=2,
+            num_layers=num_layers,
             bidirectional=True,
             dilation=2, stride=2, dropout=0.5,
             batch_first=True)
