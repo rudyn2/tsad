@@ -1,4 +1,5 @@
 from torch.nn.utils.rnn import pack_padded_sequence
+from convolutional_rnn import Conv2dLSTM
 import torch.nn as nn
 import torch
 
@@ -7,8 +8,16 @@ class RNNEncoder(nn.Module):
     def __init__(self, hidden_size: int = 2046):
         super(RNNEncoder, self).__init__()
         self.hidden_size = hidden_size
-        self.lstm = nn.LSTM(input_size=8192, hidden_size=hidden_size, batch_first=True)
-        self.output = nn.Linear(hidden_size+3, 8192)
+        self.lstm = Conv2dLSTM(
+            in_channels=512,  # Corresponds to input size
+            out_channels=hidden_size,  # Corresponds to hidden size
+            kernel_size=3,  # Int or List[int]
+            num_layers=2,
+            bidirectional=True,
+            dilation=2, stride=2, dropout=0.5,
+            batch_first=True)
+        #self.lstm = nn.LSTM(input_size=512, hidden_size=hidden_size, batch_first=True)
+        self.output = nn.Linear(hidden_size+3, 512)
 
     def forward(self, embedding, action, embedding_length):
         """
@@ -20,4 +29,3 @@ class RNNEncoder(nn.Module):
         hidden_cat_action = torch.cat([hidden, action], dim=1)
         output = self.output(hidden_cat_action)
         return output
-
