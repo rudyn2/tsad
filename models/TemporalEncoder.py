@@ -26,7 +26,6 @@ class RNNEncoder(nn.Module):
         x_pack = pack_padded_sequence(embedding, embedding_length, batch_first=True)
         h = None
         y, hidden = self.lstm(x_pack, h)
-        print(hidden.shape)
         print(action.shape)
         print(y.shape)
         return y
