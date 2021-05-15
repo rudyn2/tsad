@@ -94,7 +94,7 @@ class Extractor:
             x = self._dataset[idx][0].unsqueeze(0).to(self.__device)
             embedding = self._model.encode(x)
             #embedding = torch.flatten(embedding, start_dim=0).detach().cpu().numpy()
-            embedding = embedding.detach().cpu().numpy()
+            embedding = embedding.squeeze(dim=0).detach().cpu().numpy()
             data[t] = embedding
         return data
 
