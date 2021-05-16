@@ -21,7 +21,7 @@ if __name__ == '__main__':
     parser.add_argument('--dataset', default='online', type=str, help='Type of dataset. online: all the dataset will'
                                                                       'be loaded into memory. offline: the embeddings'
                                                                       'will be loaded lazily')
-    parser.add_argument('--hidden-size', default=1028, type=int, help='LSTM hidden size')
+    parser.add_argument('--hidden-size', default=256, type=int, help='LSTM hidden size')
     parser.add_argument('--batch-size', default=32, type=int, help='Batch size')
     parser.add_argument('--epochs', default=20, type=int, help='Epochs')
     parser.add_argument('--val-size', default=0.1, type=float,
