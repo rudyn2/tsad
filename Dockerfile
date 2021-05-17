@@ -8,9 +8,11 @@ USER root
 # RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 3B4FE6ACC0B21F32
 # RUN apt-get update
 
-RUN apt-get update
-RUN apt-get install build-essential -y
-RUN apt-get install cmake -y
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    libzmqpp-dev \
+    libopencv-dev 
 
 RUN mkdir /home/tsad
 WORKDIR /home/tsad
