@@ -8,6 +8,8 @@ USER root
 # RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 3B4FE6ACC0B21F32
 # RUN apt-get update
 
+RUN apt-get install cmake
+
 RUN mkdir /home/tsad
 WORKDIR /home/tsad
 COPY requirements.txt /home/tsad/requirements.txt
