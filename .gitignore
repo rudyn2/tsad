@@ -1,6 +1,6 @@
 dataset/
 wandb/
-scripts/best_ADEncoder_1.pth
+*.pth
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

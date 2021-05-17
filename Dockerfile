@@ -1,5 +1,5 @@
-FROM ubuntu:20.04
-FROM pytorch/pytorch:1.8.0-cuda11.1-cudnn8-devel
+FROM anibali/pytorch:1.5.0-cuda10.2
+USER root
 
 
 # RUN conda env create -f environment.yml
@@ -17,6 +17,7 @@ RUN pip install -r requirements.txt
 # Copy code
 COPY scripts/ /home/tsad/scripts/
 COPY models/ /home/tsad/models/
+COPY utils/ /home/tsad/utils/
 RUN mkdir /home/tsad/dataset
 WORKDIR /home/tsad/scripts
 
