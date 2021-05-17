@@ -41,6 +41,7 @@ class RNNEncoder(nn.Module):
         h = None
         y, h = self.lstm(x_pack, h)
         # Output of lstm is stacked through all outputs (#outputs == #inputs), we get last output
-        y = y.data.view(embedding.shape)[:, -1, :, :, :].squeeze(dim=1)
-        
+        #y = y.data.view(embedding.shape)[:, -1, :, :, :].squeeze(dim=1)
+        y = torch.mean(y.data.view(embedding.shape), dim=1)
+
         return y
