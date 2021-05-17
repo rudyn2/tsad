@@ -1,6 +1,8 @@
 import gym
-import torch.nn
+from gym import spaces
 import numpy as np
+import torch.nn
+import random
 
 
 class EncodeWrapper(gym.core.ObservationWrapper):
@@ -21,10 +23,47 @@ class EncodeWrapper(gym.core.ObservationWrapper):
         return visual_embedding
 
 
+class DummyWrapper(gym.Env):
+
+    def __init__(self, config):
+        super(DummyWrapper, self).__init__()
+        self.steps = 0
+        self.end_step = config['steps']
+        self._max_episode_steps = config['steps']
+        self.action_space = spaces.Box(np.array([0, 1]),
+                                       np.array([-1, 1]),
+                                       dtype=np.float32)  # acc, steer
+        observation_space_dict = {
+            'visual': spaces.Box(low=0, high=1, shape=(1024, 4, 4), dtype=np.float32),
+            'state': spaces.Box(np.array([-2, -1, -5, 0]), np.array([2, 1, 30, 1]), dtype=np.float32)
+        }
+
+        self.observation_space = spaces.Dict(observation_space_dict)
+
+    def render(self, mode='human'):
+        pass
+
+    def step(self, action):
+        self.steps += 1
+        done = self.steps == self.end_step
+        return {"visual": torch.rand((1024, 4, 4)),
+                "state": torch.randint(0, high=4, size=(3,))}, random.random(), done, {}
+
+    def reset(self, **kwargs):
+        self.steps = 0
+        return {"visual": torch.rand((1024, 4, 4)),
+                "state": torch.randint(0, high=4, size=(3,))}
+
+    @property
+    def max_episode_steps(self):
+        return self._max_episode_steps
+
+
 if __name__ == '__main__':
     from gym_carla.envs.carla_env import CarlaEnv
     from ADEncoder import ADEncoder
     from TemporalEncoder import RNNEncoder
+
     visual = ADEncoder(backbone='efficientnet-b5')
     temp = RNNEncoder()
 

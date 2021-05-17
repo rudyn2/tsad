@@ -1,11 +1,12 @@
 import ray
 import ray.rllib.agents.sac as sac
 
-from models.carla_wrapper import EncodeWrapper
+from models.ActorCritic import SACCustom
+from models.carla_wrapper import DummyWrapper
 
-
-ray.init()
-params = {
+if __name__ == '__main__':
+    ray.init()
+    simulator_params = {
         'number_of_vehicles': 100,
         'number_of_walkers': 0,
         'display_size': 256,  # screen size of bird-eye render
@@ -24,12 +25,13 @@ params = {
         'desired_speed': 6,  # desired speed (m/s)
         'max_ego_spawn_times': 200,  # maximum times to spawn ego vehicle
     }
-trainer = sac.SACTrainer(env=EncodeWrapper,
-                         config={
-                             "env_config": params,
-                             "model": {
-                                 "custom_model": "my_tf_model",
-                                 # Extra kwargs to be passed to your model's c'tor.
-                                 "custom_model_config": {},
-                             },
-                         })
+    model_params = {}
+    env_params = {'steps': 100}
+    trainer = sac.SACTrainer(env=DummyWrapper,
+                             config={
+                                 "env_config": env_params,
+                                 "framework": "torch",
+                                 "model": {
+                                     "custom_model": SACCustom}
+                             })
+    trainer.train()

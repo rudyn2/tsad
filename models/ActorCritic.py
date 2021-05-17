@@ -1,6 +1,10 @@
+import numpy as np
 import torch.nn
 import torch.nn as nn
-import numpy as np
+from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
+from ray.rllib.utils.typing import *
+import torch.nn.functional as F
+from typing import Union
 
 
 class TwoLayerMLP(nn.Module):
@@ -70,6 +74,7 @@ class ConvReduction(nn.Module):
         x = self.relu(x)
         x = self.avg_pooling(x)
         x = torch.flatten(x, start_dim=1)
+        # x.requires_grad = True
         return x
 
 
@@ -78,27 +83,61 @@ class Actor(nn.Module):
     Output: a (3,)
     Input: s (1024x4x4)
     """
+    HLCNUMBER_TO_HLC = {
+        0: 'right',
+        1: 'left',
+        2: 'straight',
+        3: 'follow_lane'
+    }
 
-    def __init__(self, input_channels: int):
+    def __init__(self, hidden_size: int, action_dim: int = 2):
         super(Actor, self).__init__()
-        self._input_channels = input_channels
+        self._device = 'cuda'
+        self._input_channels = 1024
+        self._action_dim = action_dim
+        self._hidden_size = hidden_size
         self.conv_reduction = ConvReduction(self._input_channels)
         self.speed_mlp = TwoLayerMLP(2, 256, 128)
 
         input_size = 1152
         self.branches = torch.nn.ModuleDict({
-            'left': TwoLayerMLP(input_size, 512, 3),
-            'right': TwoLayerMLP(input_size, 512, 3),
-            'follow_lane': TwoLayerMLP(input_size, 512, 3),
-            'straight': TwoLayerMLP(input_size, 512, 3)
+            'left': TwoLayerMLP(input_size, hidden_size, self._action_dim * 2),
+            'right': TwoLayerMLP(input_size, hidden_size, self._action_dim * 2),
+            'follow_lane': TwoLayerMLP(input_size, hidden_size, self._action_dim * 2),
+            'straight': TwoLayerMLP(input_size, hidden_size, self._action_dim * 2)
         })
 
-    def forward(self, state: torch.Tensor, speed: torch.Tensor, hlc: str):
-        x = self.conv_reduction(state)                                      # 1024x4x4 -> 1024
-        speed_embedding = self.speed_mlp(speed)       # 2, -> 128,
-        x_speed = torch.cat([x, speed_embedding], dim=1)                    # [1024, 128] -> 1152
-        x = self.branches[hlc](x_speed)                                     # 3,
-        return x
+    def forward(self, obs: Union[list, tuple, dict]):
+
+        if isinstance(obs, list) or isinstance(obs, tuple):
+            visual_embedding = torch.stack([o['visual'].to(self._device) for o in obs], dim=0)
+            state = torch.stack([o['state'].to(self._device) for o in obs], dim=0).float()
+            speed = state[:, :2]
+            hlc = state[:, 2]
+        elif isinstance(obs, dict):
+            visual_embedding = obs['visual'].unsqueeze(0).float()
+            state = obs['state']
+            speed = state[:2].unsqueeze(0).float()
+            hlc = state[2].unsqueeze(0)
+        else:
+            raise ValueError(f"Expected input of type list, tuple or dict but got: {type(obs)}")
+
+        x = self.conv_reduction(visual_embedding)  # B,1024,4,4 -> 1024
+        speed_embedding = self.speed_mlp(speed)  # B,2, -> 128,
+        x_speed = torch.cat([x, speed_embedding], dim=1)  # B,[1024, 128] -> B,1152
+
+        # forward
+        pred_branches = []
+        for c in ["right", "left", "straight", "follow_lane"]:
+            pred_branches.append(self.branches[c](x_speed))
+
+        # unpack using hlc mask
+        mask = hlc.long()
+        pred_branches = torch.stack(pred_branches)
+        pred_branches = torch.swapaxes(pred_branches, 0, -1)
+        preds = torch.sum(F.one_hot(mask, num_classes=4) * pred_branches, dim=-1).T
+
+        return preds
 
 
 class Critic(nn.Module):
@@ -107,28 +146,81 @@ class Critic(nn.Module):
     Input: (s, a); s: (1024x4x4); a: (3,)
     """
 
-    def __init__(self, input_channels: int):
+    def __init__(self, action_dim: int, hidden_dim: int):
         super(Critic, self).__init__()
-        self._input_channels = input_channels
+        self._input_channels = 1024
+        self._device = 'cuda'
         self.conv_reduction = ConvReduction(self._input_channels)
         self.speed_mlp = TwoLayerMLP(2, 256, 128)
-        self.action_mlp = TwoLayerMLP(3, 256, 128)
+        self.action_mlp = TwoLayerMLP(action_dim, 256, 128)
 
         input_size = 1280
         self.branches = torch.nn.ModuleDict({
-            'left': TwoLayerMLP(input_size, 512, 1),
-            'right': TwoLayerMLP(input_size, 512, 1),
-            'follow_lane': TwoLayerMLP(input_size, 512, 1),
-            'straight': TwoLayerMLP(input_size, 512, 1)
+            'left': TwoLayerMLP(input_size, hidden_dim, 1),
+            'right': TwoLayerMLP(input_size, hidden_dim, 1),
+            'follow_lane': TwoLayerMLP(input_size, hidden_dim, 1),
+            'straight': TwoLayerMLP(input_size, hidden_dim, 1)
         })
 
-    def forward(self, state: torch.Tensor, speed: torch.Tensor, action: torch.Tensor, hlc: str):
-        x = self.conv_reduction(state)                                      # 1024x4x4 -> 1024
-        speed_embedding = self.speed_mlp(speed)       # 2, -> 128,
+    def forward(self, obs: Union[list, tuple], action: Union[list, tuple, torch.Tensor]):
+        visual_embedding = torch.stack([o['visual'].to(self._device) for o in obs], dim=0)
+        state = torch.stack([o['state'].to(self._device) for o in obs], dim=0).float()
+        speed = state[:, :2]
+        hlc = state[:, 2]
+
+        if isinstance(action, list) or isinstance(action, tuple):
+            action = torch.stack([torch.tensor(a) for a in action]).to(self._device)
+
+        x = self.conv_reduction(visual_embedding)       # 1024x4x4 -> 1024
+        speed_embedding = self.speed_mlp(speed)         # 2, -> 128,
         action_embedding = self.action_mlp(action)
-        x_speed = torch.cat([x, speed_embedding, action_embedding], dim=1)  # [1024, 128, 128] -> 1280
-        x = self.branches[hlc](x_speed)                                     # 3,
-        return x
+        x_speed_action = torch.cat([x, speed_embedding, action_embedding], dim=1)  # [1024, 128, 128] -> 1280
+
+        # TODO: Try to optimize this
+        # forward
+        pred_branches = []
+        for c in ["right", "left", "straight", "follow_lane"]:
+            pred_branches.append(self.branches[c](x_speed_action))
+
+        # unpack using hlc mask
+        mask = hlc.long()
+        pred_branches = torch.stack(pred_branches)
+        pred_branches = torch.swapaxes(pred_branches, 0, -1)
+        preds = torch.sum(F.one_hot(mask, num_classes=4) * pred_branches, dim=-1).T
+        preds = preds.squeeze(-1)
+        return preds
+
+#
+# class SACCustom(SACTorchModel):
+#     def __init__(self, *args, **kwargs):
+#         super(SACCustom, self).__init__(*args, **kwargs)
+#         self._actor = Actor(1024)
+#         self._obs_space = args[0]
+#
+#     def build_policy_model(self, obs_space, num_outputs, policy_model_config, name):
+#         model = Actor(1024)
+#         return model
+#
+#     def build_q_model(self, obs_space, action_space, num_outputs,
+#                       q_model_config, name):
+#         model = Critic(1024)
+#         return model
+#
+#     def get_policy_output(self, model_out: TensorType) -> TensorType:
+#         state = model_out["state"]
+#         speed = state[:, :2]
+#         hlc = state[:, 3]
+#         out = self.action_model(model_out["visual"], speed, hlc)
+#         return out
+#
+#     def policy_variables(self):
+#         return self.action_model.parameters()
+#
+#     def _get_q_value(self, model_out, actions, net):
+#         pass
+#
+#     def q_variables(self):
+#         return list(self.q_net.parameters()) + (list(self.twin_q_net.parameters()) if self.twin_q_net else [])
 
 
 if __name__ == '__main__':
@@ -138,8 +230,8 @@ if __name__ == '__main__':
     action = torch.tensor(np.random.random((batch_size, 3))).float()
     mse_loss = nn.MSELoss()
 
-    critic = Critic(input_channels=1024)
-    actor = Actor(input_channels=1024)
+    critic = Critic(3, 512)
+    actor = Actor(512, 3)
     q = critic(sample_input, sample_speed, action, "right")
     a = actor(sample_input, sample_speed, "right")
 
@@ -150,4 +242,3 @@ if __name__ == '__main__':
 
     q_loss.backward()
     a_loss.backward()
-
