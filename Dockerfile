@@ -8,7 +8,8 @@ USER root
 # RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 3B4FE6ACC0B21F32
 # RUN apt-get update
 
-RUN apt-get install build-essential
+RUN apt-get update
+RUN apt-get install build-essential -y
 
 RUN mkdir /home/tsad
 WORKDIR /home/tsad
