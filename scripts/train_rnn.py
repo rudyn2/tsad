@@ -22,6 +22,7 @@ if __name__ == '__main__':
                                                                       'be loaded into memory. offline: the embeddings'
                                                                       'will be loaded lazily')
     parser.add_argument('--hidden-size', default=256, type=int, help='LSTM hidden size')
+    parser.add_argument('--num-layers', default=2, type=int, help='LSTM number of hidden layers')
     parser.add_argument('--batch-size', default=32, type=int, help='Batch size')
     parser.add_argument('--epochs', default=20, type=int, help='Epochs')
     parser.add_argument('--val-size', default=0.1, type=float,
@@ -45,7 +46,7 @@ if __name__ == '__main__':
     val_loader = DataLoader(val, batch_size=args.batch_size, collate_fn=PadSequence())
     mse_loss = torch.nn.MSELoss()
 
-    model = RNNEncoder(hidden_size=args.hidden_size)
+    model = RNNEncoder(num_layers=args.num_layers, hidden_size=args.hidden_size)
     model.to(args.device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
