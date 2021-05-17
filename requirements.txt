@@ -5,3 +5,4 @@ h5py
 efficientnet_pytorch
 memory_profiler
 pytorch-memlab==0.2.3
+'ray[rllib]'
