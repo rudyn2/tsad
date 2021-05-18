@@ -29,6 +29,9 @@ if __name__ == '__main__':
                         help='Ratio of train dataset that will be used for validation')
     parser.add_argument('--lr', default=0.0001, type=float, help='Learning rate')
     parser.add_argument('--device', default='cuda', type=str, help='device')
+    
+    parser.add_argument('--action-channels', default=64, type=int, help='Number of channels in action codification')
+    parser.add_argument('--speed-channels', default=64, type=int, help='Number of channels in speed codification')
 
     args = parser.parse_args()
 
@@ -46,7 +49,12 @@ if __name__ == '__main__':
     val_loader = DataLoader(val, batch_size=args.batch_size, collate_fn=PadSequence())
     mse_loss = torch.nn.MSELoss()
 
-    model = RNNEncoder(num_layers=args.num_layers, hidden_size=args.hidden_size)
+    model = RNNEncoder(
+        num_layers=args.num_layers, 
+        hidden_size=args.hidden_size,
+        action__chn=args.action_channels,
+        speed_chn=args.speed_channels
+        )
     model.to(args.device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
@@ -64,10 +72,10 @@ if __name__ == '__main__':
 
         # Train
         train_total_loss = 0
-        for i, (embeddings, embeddings_length, actions, embeddings_label) in enumerate(train_loader):
-            embeddings, embeddings_label, actions = embeddings.to(device), embeddings_label.to(device), actions.to(
-                device)
-            pred = model(embeddings, actions, embeddings_length)
+        for i, (embeddings, embeddings_length, actions, speeds, embeddings_label) in enumerate(train_loader):
+            embeddings, embeddings_label, actions, speeds = embeddings.to(device), embeddings_label.to(device), actions.to(
+                device), speeds.to(device)
+            pred = model(embeddings, actions, speeds, embeddings_length)
 
             optimizer.zero_grad()
             loss = mse_loss(pred, embeddings_label)
