@@ -93,11 +93,11 @@ if __name__ == '__main__':
 
         # Validate
         val_total_loss = 0
-        for embeddings, embeddings_length, actions, embeddings_label in val_loader:
+        for embeddings, embeddings_length, actions, speeds, embeddings_label in val_loader:
             with torch.no_grad():
-                embeddings, embeddings_label, actions = embeddings.to(device), embeddings_label.to(device), actions.to(
-                    device)
-                pred = model(embeddings, actions, embeddings_length)
+                embeddings, embeddings_label, actions, speeds = embeddings.to(device), embeddings_label.to(device), actions.to(
+                    device), speeds.to(device)
+                pred = model(embeddings, actions, speeds, embeddings_length)
                 loss = mse_loss(pred, embeddings_label)
                 val_total_loss += loss.item()
 
