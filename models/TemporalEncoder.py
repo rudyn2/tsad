@@ -17,7 +17,6 @@ class RNNEncoder(nn.Module):
             stride=2, #dropout=0.5, dilation=2, 
             batch_first=True)
 
-        #self.lstm = nn.LSTM(input_size=512, hidden_size=hidden_size, batch_first=True)
         self.action_cod = nn.Sequential(
             nn.Linear(3, 8),
             nn.ReLU(),
@@ -34,7 +33,10 @@ class RNNEncoder(nn.Module):
         self.speed_conv = nn.Conv2d(
             1, speed_chn, 1
         )
-        #self.output = nn.Linear(hidden_size+3, 512)
+
+        self.output_conv = nn.Conv2d(
+            512*4, 512, 1
+        )
 
     def forward(self, embedding, action, speed, embedding_length):
         """
@@ -62,7 +64,8 @@ class RNNEncoder(nn.Module):
         h = None
         y, h = self.lstm(x_pack, h)
         # Output of lstm is stacked through all outputs (#outputs == #inputs), we get last output
-        y = y.data.view(embedding.shape)[:, -1, :, :, :].squeeze(dim=1)
+        y = self.output_conv(y.data.view(embedding.shape).view(embedding.shape[0], -1, embedding.shape[-3], embedding.shape[-2], embedding.shape[-1]))
+        # y = y.data.view(embedding.shape)[:, -1, :, :, :].squeeze(dim=1)
         # y = torch.mean(y.data.view(embedding.shape), dim=1)
 
         return y
