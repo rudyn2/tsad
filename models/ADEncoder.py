@@ -183,6 +183,7 @@ class TrafficLightClassifier(nn.Module):
         x = self.fc2(x)
         return x
 
+
 class PedestrianClassifier(nn.Module):
     """
     Pedestrian Classifier: Exists or not.
@@ -263,7 +264,7 @@ class ADEncoder(nn.Module):
             self.backbone = EfficientNetBackbone(name=backbone)
         self.seg = ImageSegmentationBranch(512, 6, use_bn)
         self.traffic_light_classifier = TrafficLightClassifier()
-        #self.pedestrian_classifier = PedestrianClassifier()
+        self.pedestrian_classifier = PedestrianClassifier()
         self.vehicle_position = VehicleAffordanceRegressor()
         self.vehicle_orientation = VehicleAffordanceRegressor()
 
