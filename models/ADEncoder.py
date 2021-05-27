@@ -274,11 +274,11 @@ class ADEncoder(nn.Module):
         traffic_light_status = self.traffic_light_classifier(flatten_embedding)
         vehicle_position = self.vehicle_position(flatten_embedding)
         vehicle_orientation = self.vehicle_orientation(flatten_embedding)
-        #pedestrian = self.pedestrian_classifier(flatten_embedding)
+        pedestrian = self.pedestrian_classifier(flatten_embedding)
         return {'segmentation': seg_img,
                 'traffic_light_status': traffic_light_status,
                 'vehicle_affordances': torch.cat([vehicle_position, vehicle_orientation], dim=1),
-                #'pedestrian': pedestrian
+                'pedestrian': pedestrian
                 }
 
     def encode(self, x):
