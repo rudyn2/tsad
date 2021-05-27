@@ -1,22 +1,14 @@
 #!/usr/bin/env python3
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import copy
-import math
 import os
-import sys
 import time
-import pickle as pkl
 
-from video import VideoRecorder
-from logger import Logger
-from replay_buffer import ReplayMemoryFast
-import utils
-
-from models.carla_wrapper import DummyWrapper
 import hydra
+import torch
+
+from logger import Logger
+from models.carla_wrapper import DummyWrapper
+import sac.utils as utils
+from replay_buffer import MixedReplayBuffer
 
 
 def make_env(cfg):
@@ -51,7 +43,7 @@ class Workspace(object):
         ]
         self.agent = hydra.utils.instantiate(cfg.agent)
 
-        self.replay_buffer = ReplayMemoryFast(memory_size=1024)
+        self.replay_buffer = MixedReplayBuffer(online_memory_size=1024, offline_buffer_hdf5='.', offline_buffer_json='')
 
         self.step = 0
 

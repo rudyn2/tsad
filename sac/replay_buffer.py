@@ -5,6 +5,7 @@ import h5py
 import numpy as np
 import torch
 from tqdm import tqdm
+from sac.utils import calc_reward
 
 
 class StateObj(object):
@@ -132,7 +133,7 @@ class MixedReplayBuffer(object):
                                float(self.HLC_TO_NUMBER[next_step_metadata['command']])])
         observation = dict(visual=visual, state=state)
         next_observation = dict(visual=next_visual, state=next_state)
-        reward = 0          # tbd
+        reward = calc_reward(step_metadata)          # tbd
         action = np.array([float(step_metadata['control']['steer']),
                            float(step_metadata['control']['throttle']),
                            float(step_metadata['control']['brake'])])

@@ -115,3 +115,32 @@ def to_np(t):
         return np.array([])
     else:
         return t.cpu().detach().numpy()
+
+
+def calc_reward(metadata: dict, speed_red: float = 0.75, desired_speed: float = 6) -> float:
+    steer = metadata['control']['steer']
+    command = metadata['command']
+    distance = metadata['lane_distance']
+    collision = None
+
+    # speed and steer behavior
+    if command in ['RIGHT', 'LEFT']:
+        r_a = 2 - np.abs(speed_red * desired_speed - metadata['speed']) / speed_red * desired_speed
+        is_opposite = steer > 0 and command == 'LEFT' or steer < 0 and command == 'RIGHT'
+        r_a -= steer ** 2 if is_opposite else 0
+    elif command == 'STRAIGHT':
+        r_a = 1 - np.abs(speed_red * desired_speed - metadata['speed']) / speed_red * desired_speed
+    # follow lane
+    else:
+        r_a = 2 - np.abs(desired_speed - metadata['speed']) / desired_speed
+
+    # collision
+    r_c = 0
+    if collision:
+        r_c = -5
+        if str(collision['other_actor']).startswith('vehicle'):
+            r_c = -10
+
+    # distance to center
+    r_dist = - distance / 2
+    return r_a + r_c + r_dist

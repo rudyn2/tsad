@@ -15,7 +15,6 @@ def train_for_classification(net, dataset, optimizer,
                              device: torch.device = 'cuda',
                              val_percent: float = 0.1,
                              use_wandb=False):
-
     net.to(device)
     n_val = int(len(dataset) * val_percent)
     n_train = len(dataset) - n_val
@@ -52,7 +51,8 @@ def train_for_classification(net, dataset, optimizer,
             l2 = tl_criterion(y['traffic_light_status'], tl)
             l3 = va_criterion(y['vehicle_affordances'], v_aff)
             l4 = pd_criterion(y['pedestrian'], pds)
-            loss = criterion_weights[0] * l1 + criterion_weights[1] * l2 + criterion_weights[2] * l3 + criterion_weights[3] * l4
+            loss = criterion_weights[0] * l1 + criterion_weights[1] * l2 + criterion_weights[2] * l3 + \
+                   criterion_weights[3] * l4
             loss.backward()
             optimizer.step()
 
@@ -83,7 +83,7 @@ def train_for_classification(net, dataset, optimizer,
 
             # accuracy of pedestrians
             _, max_idx = torch.max(y['pedestrian'], dim=1)
-            running_pd_acc += torch.sum(max_idx == torch.argmax(tl, dim=1)).item()
+            running_pd_acc += torch.sum(max_idx == torch.argmax(pds, dim=1)).item()
             avg_pd_acc = running_pd_acc / items * 100
 
             # report
@@ -95,10 +95,10 @@ def train_for_classification(net, dataset, optimizer,
                              + f'VA Loss: {avg_va_loss:02.5f}, '
                              + f'PED Acc: {avg_pd_acc:02.1f}%')
             if use_wandb:
-                wandb.log({'train/loss': float(avg_loss), 'train/acc TL': float(avg_tl_acc), 
-                            'train/acc PED': float(avg_pd_acc), 'train/loss PED': float(avg_pd_loss),
-                            'train/loss SEG': float(avg_seg_loss), 'train/loss TL': float(avg_tl_loss),
-                            'train/acc SEG': float(avg_seg_acc), 'train/loss VA': float(avg_va_loss)}, step=global_step)
+                wandb.log({'train/loss': float(avg_loss), 'train/acc TL': float(avg_tl_acc),
+                           'train/acc PED': float(avg_pd_acc), 'train/loss PED': float(avg_pd_loss),
+                           'train/loss SEG': float(avg_seg_loss), 'train/loss TL': float(avg_tl_loss),
+                           'train/acc SEG': float(avg_seg_acc), 'train/loss VA': float(avg_va_loss)}, step=global_step)
             global_step += 1
 
         tiempo_epochs += time.time() - inicio_epoch
@@ -110,7 +110,7 @@ def train_for_classification(net, dataset, optimizer,
                  'train/loss VA': float(avg_va_loss),
                  'train/loss TL': float(avg_tl_loss),
                  'train/loss SEG': float(avg_seg_loss),
-                 'train/acc PED': float(avg_pd_acc), 
+                 'train/acc PED': float(avg_pd_acc),
                  'train/loss PED': float(avg_pd_loss),
                  'epoch': e})
 
@@ -121,7 +121,7 @@ def train_for_classification(net, dataset, optimizer,
             train_acc.append([avg_tl_acc, avg_seg_acc, avg_va_loss, avg_pd_acc])
 
             avg_tl_acc, avg_seg_acc, avg_loss, avg_seg_loss, avg_tl_loss, avg_va_loss, avg_pd_acc, avg_pd_loss = eval_net(
-                device, 
+                device,
                 net,
                 seg_criterion,
                 tl_criterion,
@@ -184,7 +184,8 @@ def eval_net(device, net, seg_criterion, tl_criterion, val_criterion, pd_criteri
         l2 = tl_criterion(y['traffic_light_status'], tl)
         l3 = val_criterion(y['vehicle_affordances'], v_aff)
         l4 = pd_criterion(y['pedestrian'], pds)
-        loss = criterion_weights[0] * l1 + criterion_weights[1] * l2 + criterion_weights[2] * l3 + criterion_weights[3] * l4
+        loss = criterion_weights[0] * l1 + criterion_weights[1] * l2 + criterion_weights[2] * l3 + criterion_weights[
+            3] * l4
 
         running_loss += loss.item()
         running_seg_loss += l1.item()
