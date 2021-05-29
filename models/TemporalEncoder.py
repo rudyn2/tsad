@@ -63,7 +63,6 @@ class RNNEncoder(nn.Module):
         #x_pack = pack_padded_sequence(action_emb, torch.ones((32)), batch_first=True)
         h = None
         y, h = self.lstm(x_pack, h)
-        print(h.shape)
         # Output of lstm is stacked through all outputs (#outputs == #inputs), we get last output
         y = self.output_conv(y.data.view(embedding.shape[0], -1, embedding.shape[-2], embedding.shape[-1]))
         # y = y.data.view(embedding.shape)[:, -1, :, :, :].squeeze(dim=1)
