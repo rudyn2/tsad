@@ -4,7 +4,7 @@ sys.path.append('.')
 sys.path.append('..')
 
 from models.carlaEmbeddingDataset import CarlaOnlineEmbeddingDataset, PadSequence, CarlaEmbeddingDataset
-from models.TemporalEncoder import RNNEncoder
+from models.TemporalEncoder import RNNEncoder, VanillaRNNEncoder
 import argparse
 import wandb
 
@@ -30,8 +30,10 @@ if __name__ == '__main__':
     parser.add_argument('--lr', default=0.0001, type=float, help='Learning rate')
     parser.add_argument('--device', default='cuda', type=str, help='device')
     
-    parser.add_argument('--action-channels', default=64, type=int, help='Number of channels in action codification')
-    parser.add_argument('--speed-channels', default=64, type=int, help='Number of channels in speed codification')
+    parser.add_argument('--action-channels', default=128, type=int, help='Number of channels in action codification')
+    parser.add_argument('--speed-channels', default=128, type=int, help='Number of channels in speed codification')
+    parser.add_argument('--state-channels', default=2048, type=int, help='Number of channels in state codification, only used in vanilla')
+    parser.add_argument('--rnn-model', default='vanilla', type=str, help='Which rnn model use: "vanilla" or "convol"')
 
     args = parser.parse_args()
 
@@ -49,12 +51,23 @@ if __name__ == '__main__':
     val_loader = DataLoader(val, batch_size=args.batch_size, collate_fn=PadSequence())
     mse_loss = torch.nn.MSELoss()
 
-    model = RNNEncoder(
-        num_layers=args.num_layers, 
-        hidden_size=args.hidden_size,
-        action__chn=args.action_channels,
-        speed_chn=args.speed_channels
+    if args.rnn_model == "vanilla":
+        model = VanillaRNNEncoder(
+            num_layers=args.num_layers, 
+            hidden_size=args.hidden_size,
+            action__chn=args.action_channels,
+            speed_chn=args.speed_channels,
+            state_chn=args.state_channels
+            )
+    elif args.rnn_model == "convol":
+        model = RNNEncoder(
+            num_layers=args.num_layers, 
+            hidden_size=args.hidden_size,
+            action__chn=args.action_channels,
+            speed_chn=args.speed_channels
         )
+    else:
+        raise ValueError('Model not implemented')
     model.to(args.device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
