@@ -5,16 +5,32 @@ import torch.nn.functional as F
 import math
 import sac.utils as utils
 from . import Agent
-import hydra
+from sac.agent.actor import DiagGaussianActor
+from sac.agent.critic import DoubleQCritic
 
 
 class SACAgent(Agent):
     """SAC algorithm."""
-    def __init__(self, obs_dim, action_dim, action_range, device, critic_cfg,
-                 actor_cfg, discount, init_temperature, alpha_lr, alpha_betas,
-                 actor_lr, actor_betas, actor_update_frequency, critic_lr,
-                 critic_betas, critic_tau, critic_target_update_frequency,
-                 batch_size, learnable_temperature):
+    def __init__(self,
+                 actor: DiagGaussianActor,
+                 critic: DoubleQCritic,
+                 target_critic: DoubleQCritic,
+                 action_dim: int = 2,
+                 action_range: tuple = (-1, 1),
+                 device: str = 'cuda',
+                 discount: float = 0.99,
+                 init_temperature: float = 0.1,
+                 critic_tau: float = 0.005,
+                 actor_lr: float = 1e-4,
+                 critic_lr: float = 1e-4,
+                 alpha_lr: float = 1e-4,
+                 actor_betas: tuple = (0.9, 0.999),
+                 critic_betas: tuple = (0.9, 0.999),
+                 alpha_betas: tuple = (0.9, 0.999),
+                 actor_update_frequency: int = 1,
+                 critic_target_update_frequency: int = 2,
+                 batch_size: int = 1024,
+                 learnable_temperature: bool = True):
         super().__init__()
 
         self.action_range = action_range
@@ -26,12 +42,11 @@ class SACAgent(Agent):
         self.batch_size = batch_size
         self.learnable_temperature = learnable_temperature
 
-        self.critic = hydra.utils.instantiate(critic_cfg).to(self.device)
-        self.critic_target = hydra.utils.instantiate(critic_cfg).to(
-            self.device)
+        # store actor and critic
+        self.critic = critic
+        self.critic_target = target_critic
         self.critic_target.load_state_dict(self.critic.state_dict())
-
-        self.actor = hydra.utils.instantiate(actor_cfg).to(self.device)
+        self.actor = actor
 
         self.log_alpha = torch.tensor(np.log(init_temperature)).to(self.device)
         self.log_alpha.requires_grad = True

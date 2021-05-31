@@ -1,11 +1,11 @@
-import numpy as np
-import torch
 import math
-from torch import nn
+
+import torch
 import torch.nn.functional as F
 from torch import distributions as pyd
+from torch import nn
 
-import pytorch_sac.utils as utils
+import sac.utils as utils
 from models.ActorCritic import Actor
 
 
@@ -58,7 +58,8 @@ class SquashedNormal(pyd.transformed_distribution.TransformedDistribution):
 
 class DiagGaussianActor(nn.Module):
     """torch.distributions implementation of an diagonal Gaussian policy."""
-    def __init__(self, obs_dim, action_dim, hidden_dim, log_std_bounds):
+
+    def __init__(self, action_dim, hidden_dim, log_std_bounds):
         super().__init__()
 
         self.log_std_bounds = log_std_bounds
@@ -90,4 +91,3 @@ class DiagGaussianActor(nn.Module):
         # for i, m in enumerate(self.trunk):
         #     if type(m) == nn.Linear:
         #         logger.log_param(f'train_actor/fc{i}', m, step)
-

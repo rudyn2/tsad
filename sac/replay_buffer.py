@@ -151,6 +151,8 @@ class MixedReplayBuffer(object):
 
         return offline_samples, online_samples
 
+    def add(self, obs, action, reward, next_obs, done, done_no_max):
+        pass
 
 # class ReplayBuffer(object):
 #     """Buffer to store environment transitions."""
@@ -206,6 +208,6 @@ class MixedReplayBuffer(object):
 
 if __name__ == '__main__':
     mixed_replay_buffer = MixedReplayBuffer(512,
-                                            offline_buffer_hdf5='/home/rudy/Documents/tsad/dataset/embeddings_noflat.hdf5',
-                                            offline_buffer_json='/home/rudy/Documents/tsad/dataset/carla_dataset.json')
+                                            offline_buffer_hdf5='/tmp/embeddings_noflat.hdf5',
+                                            offline_buffer_json='/tmp/carla_dataset_temp.json')
     sample = mixed_replay_buffer.sample(batch_size=512, offline=0.7)

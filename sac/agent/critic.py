@@ -1,25 +1,22 @@
-import numpy as np
-import torch
 from torch import nn
-import torch.nn.functional as F
-from models.ActorCritic import Actor, Critic
 
-import pytorch_sac.utils as utils
+import sac.utils as utils
+from models.ActorCritic import Critic
 
 
 class DoubleQCritic(nn.Module):
     """Critic network, employes double Q-learning."""
-    def __init__(self, obs_dim, action_dim, hidden_dim):
+
+    def __init__(self, action_dim, hidden_dim):
         super().__init__()
 
-        self.Q1 = Critic(action_dim, obs_dim)
-        self.Q2 = Critic(action_dim, obs_dim)
+        self.Q1 = Critic(hidden_dim=hidden_dim, action_dim=action_dim)
+        self.Q2 = Critic(hidden_dim=hidden_dim, action_dim=action_dim)
 
         self.outputs = dict()
         self.apply(utils.weight_init)
 
     def forward(self, obs, action):
-
         q1 = self.Q1(obs, action)
         q2 = self.Q2(obs, action)
 

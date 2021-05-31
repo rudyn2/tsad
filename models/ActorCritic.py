@@ -146,7 +146,7 @@ class Critic(nn.Module):
     Input: (s, a); s: (1024x4x4); a: (3,)
     """
 
-    def __init__(self, action_dim: int, hidden_dim: int):
+    def __init__(self, hidden_dim: int, action_dim: int, ):
         super(Critic, self).__init__()
         self._input_channels = 1024
         self._device = 'cuda'
