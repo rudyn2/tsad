@@ -1,7 +1,9 @@
-from torch.nn.utils.rnn import pack_padded_sequence
-from .convolutional_rnn import Conv2dLSTM
-import torch.nn as nn
 import torch
+import torch.nn as nn
+from torch.nn.utils.rnn import pack_padded_sequence
+from torch import Tensor
+
+from models.convolutional_rnn import Conv2dLSTM
 
 
 class RNNEncoder(nn.Module):
@@ -9,12 +11,12 @@ class RNNEncoder(nn.Module):
         super(RNNEncoder, self).__init__()
         self.hidden_size = hidden_size
         self.lstm = Conv2dLSTM(
-            in_channels=512+action__chn+speed_chn,  # Corresponds to input size
+            in_channels=512 + action__chn + speed_chn,  # Corresponds to input size
             out_channels=hidden_size,  # Corresponds to hidden size
             kernel_size=3,  # Int or List[int]
             num_layers=num_layers,
             bidirectional=True,
-            stride=2, #dropout=0.5, dilation=2, 
+            stride=2,  # dropout=0.5, dilation=2,
             batch_first=True)
 
         self.action_cod = nn.Sequential(
@@ -23,7 +25,7 @@ class RNNEncoder(nn.Module):
             nn.Linear(8, 16)
         )
         self.action_conv = nn.Conv2d(
-            1, action__chn, 1
+            1, action__chn, kernel_size=(1, 1)
         )
         self.speed_cod = nn.Sequential(
             nn.Linear(1, 8),
@@ -31,11 +33,11 @@ class RNNEncoder(nn.Module):
             nn.Linear(8, 16)
         )
         self.speed_conv = nn.Conv2d(
-            1, speed_chn, 1
+            1, speed_chn, kernel_size=(1, 1)
         )
 
         self.output_conv = nn.Conv2d(
-            hidden_size*2*4, 512, 1
+            hidden_size * 2 * 4, 512, kernel_size=(1, 1)
         )
 
     def forward(self, embedding, action, speed, embedding_length):
@@ -48,7 +50,7 @@ class RNNEncoder(nn.Module):
         action_cod = self.action_conv(action_cod).unsqueeze(dim=1)
         # Action (B, 1, 64, 4, 4) => (B, 4, 64, 4, 4)
         action_cod = torch.cat((action_cod, action_cod, action_cod, action_cod), dim=1)
-        
+
         # Speed (B, 1) => (B, 16) => (B, 1, 4, 4)
         speed_cod = self.speed_cod(speed).view(-1, 1, 4, 4)
         # Speed (B, 1, 4, 4) => (B, 64, 4, 4) => (B, 1, 64, 4, 4)
@@ -58,9 +60,9 @@ class RNNEncoder(nn.Module):
 
         # Cat embeddings and action (B, 4, 512, 4, 4) + (B, 4, 1, 4, 4) => (B, 4, 513, 4, 4)
         action_emb = torch.cat((embedding, action_cod, speed_cod), dim=2)
-        
+
         x_pack = pack_padded_sequence(action_emb, embedding_length, batch_first=True)
-        #x_pack = pack_padded_sequence(action_emb, torch.ones((32)), batch_first=True)
+        # x_pack = pack_padded_sequence(action_emb, torch.ones((32)), batch_first=True)
         h = None
         y, h = self.lstm(x_pack, h)
         # Output of lstm is stacked through all outputs (#outputs == #inputs), we get last output
@@ -71,13 +73,13 @@ class RNNEncoder(nn.Module):
         return y
 
 
-
 class VanillaRNNEncoder(nn.Module):
-    def __init__(self, num_layers: int = 2, hidden_size: int = 512, action__chn: int = 64, speed_chn: int = 64, state_chn: int = 2048):
+    def __init__(self, num_layers: int = 2, hidden_size: int = 512, action__chn: int = 64, speed_chn: int = 64,
+                 state_chn: int = 2048):
         super(VanillaRNNEncoder, self).__init__()
         self.hidden_size = hidden_size
         self.lstm = nn.LSTM(
-            input_size=state_chn+action__chn+speed_chn,
+            input_size=state_chn + action__chn + speed_chn,
             hidden_size=hidden_size,
             num_layers=num_layers,
             bidirectional=True
@@ -88,21 +90,21 @@ class VanillaRNNEncoder(nn.Module):
             nn.ReLU(),
             nn.Conv2d(1024, state_chn, kernel_size=(2, 2), stride=(2, 2))
         )
-        
+
         self.action_cod = nn.Sequential(
-            nn.Linear(3, 16),
+            nn.Linear(2, 16),
             nn.ReLU(),
             nn.Linear(16, action__chn)
         )
 
         self.speed_cod = nn.Sequential(
-            nn.Linear(1, 16),
+            nn.Linear(2, 16),
             nn.ReLU(),
             nn.Linear(16, speed_chn)
         )
 
         self.output_upconv = nn.ConvTranspose2d(
-            2*hidden_size*4, 512, kernel_size=(4, 4), stride=(4, 4)
+            2 * hidden_size * 4, 512, kernel_size=(4, 4), stride=(4, 4)
         )
 
     def forward(self, embedding, action, speed, embedding_length):
@@ -118,15 +120,17 @@ class VanillaRNNEncoder(nn.Module):
         # Speed (B, 1, 64) => (B, 4, 64)
         speed_cod = torch.cat((speed_cod, speed_cod, speed_cod, speed_cod), dim=1)
 
-        # Action emb (B, 4, 512, 4, 4) => (4*B, 512, 4, 4) => (4*B, 2048, 1, 1) => (B, 4, 2048)
-        embedding = self.embedding_conv(embedding.view(-1, embedding.shape[-3], embedding.shape[-2], embedding.shape[-1])).view(embedding.shape[0], embedding.shape[1], -1)
+        # Visual emb (B, 4, 512, 4, 4) => (4*B, 512, 4, 4) => (4*B, 2048, 1, 1) => (B, 4, 2048)
+        embedding = self.embedding_conv(
+            embedding.view(-1, embedding.shape[-3], embedding.shape[-2], embedding.shape[-1])).view(embedding.shape[0],
+                                                                                                    embedding.shape[1],
+                                                                                                    -1)
 
         # Cat embeddings and action (B, 4, 2048) + (B, 4, 64) + (B, 4, 64) => (B, 4, 2176)
         action_emb = torch.cat((embedding, action_cod, speed_cod), dim=2)
 
-        
         x_pack = pack_padded_sequence(action_emb, embedding_length, batch_first=True)
-        #h0, c0 = torch.randn(embedding.shape[0], embedding.shape[1], self.hidden_size), torch.randn(embedding.shape[0], embedding.shape[1], self.hidden_size)
+        # h0, c0 = torch.randn(embedding.shape[0], embedding.shape[1], self.hidden_size), torch.randn(embedding.shape[0], embedding.shape[1], self.hidden_size)
         y, _ = self.lstm(x_pack)
         # Output of lstm is stacked through all outputs (#outputs == #inputs), we get last output
         # y (4*B, 512) => (B, 4*512, 1, 1) => (B, 512, 4, 4)

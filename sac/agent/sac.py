@@ -3,10 +3,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
-
-from agent import Agent
-import pytorch_sac.utils as utils
-
+import sac.utils as utils
+from . import Agent
 import hydra
 
 

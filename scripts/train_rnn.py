@@ -19,7 +19,8 @@ if __name__ == '__main__':
     parser.add_argument('--embeddings', default='../dataset/embeddings.hdf5', type=str, help='Path to embeddings hdf5')
     parser.add_argument('--metadata', default='../dataset/carla_dataset.json', type=str, help='Path to json file')
     parser.add_argument('--dataset', default='online', type=str, help='Type of dataset. online: all the dataset will'
-                                                                      'be loaded into memory. offline: the embeddings'
+                                                                      'be loaded into memory before training. '
+                                                                      'offline: the embeddings'
                                                                       'will be loaded lazily')
     parser.add_argument('--hidden-size', default=256, type=int, help='LSTM hidden size')
     parser.add_argument('--num-layers', default=2, type=int, help='LSTM number of hidden layers')

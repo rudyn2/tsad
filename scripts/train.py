@@ -83,7 +83,7 @@ def train_for_classification(net, dataset, optimizer,
 
             # accuracy of pedestrians
             _, max_idx = torch.max(y['pedestrian'], dim=1)
-            running_pd_acc += torch.sum(max_idx == torch.argmax(pds, dim=1)).item()
+            running_pd_acc += torch.sum(max_idx == torch.argmax(tl, dim=1)).item()
             avg_pd_acc = running_pd_acc / items * 100
 
             # report
@@ -208,7 +208,7 @@ def eval_net(device, net, seg_criterion, tl_criterion, val_criterion, pd_criteri
         running_seg_acc += torch.sum(max_idx == s).item() / max_idx.numel()
         # accuracy of pedestrians
         _, max_idx = torch.max(y['pedestrian'], dim=1)
-        running_pd_acc += torch.sum(max_idx == torch.argmax(pds, dim=1)).item()
+        running_pd_acc += torch.sum(max_idx == torch.argmax(tl, dim=1)).item()
 
         total_test += x.shape[0]
 
