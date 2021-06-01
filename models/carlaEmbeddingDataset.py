@@ -14,9 +14,10 @@ class PadSequence:
         sequences = [x[0] for x in sorted_batch]
         sequences_padded = torch.nn.utils.rnn.pad_sequence(sequences, batch_first=True)
         lengths = torch.LongTensor([len(x) for x in sequences])
-        labels = torch.stack([s[2] for s in sorted_batch])
+        labels = torch.stack([s[3] for s in sorted_batch])
+        speeds = torch.stack([s[2] for s in sorted_batch])
         actions = torch.stack([s[1] for s in sorted_batch])
-        return sequences_padded, lengths, actions, labels
+        return sequences_padded, lengths, actions, speeds, labels
 
 
 class CarlaEmbeddingDataset(Dataset):
@@ -58,7 +59,8 @@ class CarlaEmbeddingDataset(Dataset):
             embeddings = [np.array(f[run_id][t]) for t in windows_ts]
             control = self._metadata[run_id][windows_ts[-2]]['control']
             action = torch.tensor([control['steer'], control['throttle'], control['brake']])
-            return torch.tensor(embeddings[:-1]), action, torch.tensor(embeddings[-1])
+            speed = torch.tensor([self._metadata[run_id][windows_ts[-2]]['speed']])
+            return torch.tensor(embeddings[:-1]), action, speed, torch.tensor(embeddings[-1])
 
     def __len__(self):
         return sum([len(self._metadata[k]) // 4 for k in self._metadata.keys()])
@@ -71,20 +73,22 @@ class CarlaOnlineEmbeddingDataset(Dataset):
         org_length = self._source_dataset
         self._sequences = [None] * len(org_length)
         self._actions = [None] * len(org_length)
+        self._speeds = [None] * len(org_length)
         self._labels = [None] * len(org_length)
         self._load_all()
 
     def __getitem__(self, item):
-        return self._sequences[item], self._actions[item], self._labels[item]
+        return self._sequences[item], self._actions[item], self._speeds[item], self._labels[item]
 
     def __len__(self):
         return len(self._sequences)
 
     def _load_all(self):
         for i in tqdm(range(len(self._source_dataset)), "Loading dataset"):
-            s, a, s1 = self._source_dataset[i]
+            s, a, sps, s1 = self._source_dataset[i]
             self._sequences[i] = s
             self._actions[i] = a
+            self._speeds[i] = sps
             self._labels[i] = s1
 
 

@@ -4,7 +4,7 @@ sys.path.append('.')
 sys.path.append('..')
 
 from models.carlaEmbeddingDataset import CarlaOnlineEmbeddingDataset, PadSequence, CarlaEmbeddingDataset
-from models.TemporalEncoder import RNNEncoder
+from models.TemporalEncoder import RNNEncoder, VanillaRNNEncoder
 import argparse
 import wandb
 
@@ -19,15 +19,22 @@ if __name__ == '__main__':
     parser.add_argument('--embeddings', default='../dataset/embeddings.hdf5', type=str, help='Path to embeddings hdf5')
     parser.add_argument('--metadata', default='../dataset/carla_dataset.json', type=str, help='Path to json file')
     parser.add_argument('--dataset', default='online', type=str, help='Type of dataset. online: all the dataset will'
-                                                                      'be loaded into memory. offline: the embeddings'
+                                                                      'be loaded into memory before training. '
+                                                                      'offline: the embeddings'
                                                                       'will be loaded lazily')
     parser.add_argument('--hidden-size', default=256, type=int, help='LSTM hidden size')
+    parser.add_argument('--num-layers', default=2, type=int, help='LSTM number of hidden layers')
     parser.add_argument('--batch-size', default=32, type=int, help='Batch size')
     parser.add_argument('--epochs', default=20, type=int, help='Epochs')
     parser.add_argument('--val-size', default=0.1, type=float,
                         help='Ratio of train dataset that will be used for validation')
     parser.add_argument('--lr', default=0.0001, type=float, help='Learning rate')
     parser.add_argument('--device', default='cuda', type=str, help='device')
+    
+    parser.add_argument('--action-channels', default=128, type=int, help='Number of channels in action codification')
+    parser.add_argument('--speed-channels', default=128, type=int, help='Number of channels in speed codification')
+    parser.add_argument('--state-channels', default=2048, type=int, help='Number of channels in state codification, only used in vanilla')
+    parser.add_argument('--rnn-model', default='vanilla', type=str, help='Which rnn model use: "vanilla" or "convol"')
 
     args = parser.parse_args()
 
@@ -45,7 +52,23 @@ if __name__ == '__main__':
     val_loader = DataLoader(val, batch_size=args.batch_size, collate_fn=PadSequence())
     mse_loss = torch.nn.MSELoss()
 
-    model = RNNEncoder(hidden_size=args.hidden_size)
+    if args.rnn_model == "vanilla":
+        model = VanillaRNNEncoder(
+            num_layers=args.num_layers, 
+            hidden_size=args.hidden_size,
+            action__chn=args.action_channels,
+            speed_chn=args.speed_channels,
+            state_chn=args.state_channels
+            )
+    elif args.rnn_model == "convol":
+        model = RNNEncoder(
+            num_layers=args.num_layers, 
+            hidden_size=args.hidden_size,
+            action__chn=args.action_channels,
+            speed_chn=args.speed_channels
+        )
+    else:
+        raise ValueError('Model not implemented')
     model.to(args.device)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
@@ -63,10 +86,10 @@ if __name__ == '__main__':
 
         # Train
         train_total_loss = 0
-        for i, (embeddings, embeddings_length, actions, embeddings_label) in enumerate(train_loader):
-            embeddings, embeddings_label, actions = embeddings.to(device), embeddings_label.to(device), actions.to(
-                device)
-            pred = model(embeddings, actions, embeddings_length)
+        for i, (embeddings, embeddings_length, actions, speeds, embeddings_label) in enumerate(train_loader):
+            embeddings, embeddings_label, actions, speeds = embeddings.to(device), embeddings_label.to(device), actions.to(
+                device), speeds.to(device)
+            pred = model(embeddings, actions, speeds, embeddings_length)
 
             optimizer.zero_grad()
             loss = mse_loss(pred, embeddings_label)
@@ -84,11 +107,11 @@ if __name__ == '__main__':
 
         # Validate
         val_total_loss = 0
-        for embeddings, embeddings_length, actions, embeddings_label in val_loader:
+        for embeddings, embeddings_length, actions, speeds, embeddings_label in val_loader:
             with torch.no_grad():
-                embeddings, embeddings_label, actions = embeddings.to(device), embeddings_label.to(device), actions.to(
-                    device)
-                pred = model(embeddings, actions, embeddings_length)
+                embeddings, embeddings_label, actions, speeds = embeddings.to(device), embeddings_label.to(device), actions.to(
+                    device), speeds.to(device)
+                pred = model(embeddings, actions, speeds, embeddings_length)
                 loss = mse_loss(pred, embeddings_label)
                 val_total_loss += loss.item()
 
