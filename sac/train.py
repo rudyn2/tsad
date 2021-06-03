@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import sys
 import time
 
 import torch
@@ -30,9 +31,6 @@ class SACTrainer(object):
         print(f'workspace: {self.work_dir}')
 
         # save some training configurations
-        self.logger = Logger(self.work_dir,
-                             save_tb=kwargs["log_save_tb"])
-
         utils.set_seed_everywhere(kwargs["seed"])
         self.device = torch.device(kwargs["device"])
         self.num_eval_episodes = kwargs["num_eval_episodes"]
@@ -64,9 +62,7 @@ class SACTrainer(object):
             average_episode_reward += episode_reward
             # self.video_recorder.save(f'{self.step}.mp4')
         average_episode_reward /= self.num_eval_episodes
-        self.logger.log('eval/episode_reward', average_episode_reward,
-                        self.step)
-        self.logger.dump(self.step)
+        wandb.log({'eval/episode_reward': average_episode_reward})
 
     def run(self):
         episode, episode_reward, done, episode_step = 0, 0, 0, True
@@ -75,20 +71,17 @@ class SACTrainer(object):
         while self.step < self.num_train_steps:
             if done:
                 if self.step > 0:
-                    self.logger.log('train/duration',
-                                    time.time() - start_time, self.step)
+                    wandb.log({'train/duration': time.time() - start_time})
                     start_time = time.time()
-                    self.logger.dump(
-                        self.step, save=(self.step > self.num_seed_steps))
 
                 # evaluate agent periodically
                 if self.step > 0 and self.step % self.eval_frequency == 0:
-                    self.logger.log('eval/episode', episode, self.step)
+                    wandb.log({'eval/episode': episode})
                     self.evaluate()
 
-                self.logger.log('train/episode_reward', episode_reward,
-                                self.step)
+                wandb.log({'train/episode_reward': episode_reward})
 
+                print("Resetting")
                 obs = self.env.reset()
                 self.agent.reset()
                 done = False
@@ -96,7 +89,7 @@ class SACTrainer(object):
                 episode_step = 0
                 episode += 1
 
-                self.logger.log('train/episode', episode, self.step)
+                wandb.log({'train/episode': episode})
 
             # sample action for data collection
             if self.step < self.num_seed_steps:
@@ -122,14 +115,22 @@ class SACTrainer(object):
             episode_step += 1
             self.step += 1
 
+            sys.stdout.write("\r")
+            sys.stdout.write(f"Iteration step: {self.step}")
+            sys.stdout.flush()
+
 
 if __name__ == '__main__':
+    import warnings
+    import wandb
     from gym_carla.envs.carla_env import CarlaEnv
     from models.ADEncoder import ADEncoder
     from models.TemporalEncoder import VanillaRNNEncoder
     from sac.agent.sac import SACAgent
     from sac.agent.actor import DiagGaussianActor
     from sac.agent.critic import DoubleQCritic
+
+    warnings.filterwarnings("ignore")
 
     # region: GENERAL PARAMETERS
     action_dim = 2
@@ -141,6 +142,10 @@ if __name__ == '__main__':
         "hdf5": "/tmp/embeddings_noflat.hdf5",
         "json": "/tmp/carla_dataset_temp.json"
     }
+    # endregion
+
+    # region: init wandb
+    wandb.init(project='tsad', entity='autonomous-driving')
     # endregion
 
     # region: init env
@@ -202,13 +207,16 @@ if __name__ == '__main__':
     train_params = {
         "device": "cuda",
         "seed": 42,
+        "log_save_tb": True,
         "num_eval_episodes": 5,
-        "num_train_steps": 5,
+        "num_train_steps": 1e6,
         "eval_frequency": 10000,
         "num_seed_steps": 5000
     }
     print(colored("Training", "white"))
     trainer = SACTrainer(env=carla_processed_env,
                          agent=agent,
-                         buffer=mixed_replay_buffer)
+                         buffer=mixed_replay_buffer,
+                         **train_params
+                         )
     trainer.run()

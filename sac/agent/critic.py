@@ -25,10 +25,6 @@ class DoubleQCritic(nn.Module):
 
         return q1, q2
 
-    def log(self, logger, step):
-        for k, v in self.outputs.items():
-            logger.log_histogram(f'train_critic/{k}_hist', v, step)
-
         # assert len(self.Q1) == len(self.Q2)
         # for i, (m1, m2) in enumerate(zip(self.Q1, self.Q2)):
         #     assert type(m1) == type(m2)

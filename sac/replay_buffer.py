@@ -110,7 +110,7 @@ class MixedReplayBuffer(object):
         total_offline_steps = self._get_total_steps()
         offline_buffer = ReplayMemoryFast(memory_size=total_offline_steps)
         with h5py.File(self._offline_buffer_hdf5_path, "r") as f:
-            for run_id in tqdm(f.keys(), "Loading dataset"):
+            for run_id in tqdm(list(f.keys())[:5], "Loading dataset"):
                 episode_metadata = metadata[run_id]
                 steps = list(f[run_id].keys())
                 steps = sorted(steps)   # to be sure that they are in order

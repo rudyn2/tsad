@@ -19,6 +19,7 @@ class EncodeWrapper(Wrapper):
                  device: str = 'cuda'):
         super(EncodeWrapper, self).__init__(env)
 
+        self.max_episode_steps = 1000
         self._device = device
         self._visual_encoder = visual_encoder
         self._temporal_encoder = temporal_encoder
@@ -178,6 +179,6 @@ if __name__ == '__main__':
     carla_raw_env = CarlaEnv(params)
     carla_processed_env = EncodeWrapper(carla_raw_env, visual, temp)
     obs = carla_processed_env.reset()
-    for _ in range(2):
-        obs, reward, done, info = carla_processed_env.step([0, 0])
+    for _ in range(100):
+        obs, reward, done, info = carla_processed_env.step([1, 0])
         print(obs.shape, reward, done)

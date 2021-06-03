@@ -11,7 +11,7 @@ class Agent(object):
         """Sets the agent in either training or evaluation mode."""
 
     @abc.abstractmethod
-    def update(self, replay_buffer, logger, step):
+    def update(self, replay_buffer, step):
         """Main function of the agent that performs learning."""
 
     @abc.abstractmethod
