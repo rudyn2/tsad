@@ -286,11 +286,9 @@ class ADEncoder(nn.Module):
         x = self.backbone(x)
         return x
 
-    def __str__(self):
-        return ""
-
-    def __repr__(self):
-        return ""
+    def freeze(self):
+        for param in self.parameters():
+            param.requires_grad = False
 
 
 if __name__ == '__main__':

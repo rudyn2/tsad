@@ -5,15 +5,6 @@ import numpy as np
 import torch
 from torch import nn
 
-from models.carla_wrapper import DummyWrapper
-
-
-def make_env(cfg):
-    """Helper function to create dm_control environment"""
-    env = DummyWrapper(cfg)
-
-    return env
-
 
 class eval_mode(object):
     def __init__(self, *models):

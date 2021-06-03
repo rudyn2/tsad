@@ -13,14 +13,6 @@ from sac.agent.sac import SACAgent
 from termcolor import colored
 
 
-def make_env(cfg):
-    """Helper function to create dm_control environment"""
-    env = EncodeWrapper(cfg)
-    # env.seed(cfg.seed)
-
-    return env
-
-
 class SACTrainer(object):
     def __init__(self,
                  env: EncodeWrapper,
@@ -116,8 +108,7 @@ class SACTrainer(object):
             self.step += 1
 
             sys.stdout.write("\r")
-            sys.stdout.write(f"Iteration step: {self.step}")
-            sys.stdout.flush()
+            sys.stdout.write(f"Training step: {self.step}/{self.num_train_steps}")
 
 
 if __name__ == '__main__':
@@ -129,6 +120,12 @@ if __name__ == '__main__':
     from sac.agent.sac import SACAgent
     from sac.agent.actor import DiagGaussianActor
     from sac.agent.critic import DoubleQCritic
+    import argparse
+    parser = argparse.ArgumentParser(description="SAC Trainer",
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('-i', '--input', required=True, default=None, type=str, help='path to hdf5 file')
+    parser.add_argument('-m', '--metadata', default=None, type=str, help='path to json file')
+    args = parser.parse_args()
 
     warnings.filterwarnings("ignore")
 
@@ -139,8 +136,8 @@ if __name__ == '__main__':
 
     online_memory_size = 512
     offline_dataset_path = {
-        "hdf5": "/tmp/embeddings_noflat.hdf5",
-        "json": "/tmp/carla_dataset_temp.json"
+        "hdf5": args.input,
+        "json": args.metadata
     }
     # endregion
 
@@ -152,6 +149,8 @@ if __name__ == '__main__':
     print(colored("[*] Initializing models", "white"))
     visual = ADEncoder(backbone='efficientnet-b5')
     temp = VanillaRNNEncoder()
+    visual.freeze()
+    temp.freeze()
     print(colored("[+] Encoder models were initialized and loaded successfully!", "green"))
 
     print(colored("[*] Initializing environment", "white"))
@@ -161,11 +160,11 @@ if __name__ == '__main__':
         'display_size': 256,  # screen size of bird-eye render
         'max_past_step': 1,  # the number of past steps to draw
         'dt': 0.05,  # time interval between two frames
-        'continuous_accel_range': [-3.0, 3.0],  # continuous acceleration range
-        'continuous_steer_range': [-0.3, 0.3],  # continuous steering angle range
+        'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
+        'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
         'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
         'port': 2000,  # connection port
-        'town': 'Town03',  # which town to simulate
+        'town': 'Town01',  # which town to simulate
         'max_time_episode': 1000,  # maximum timesteps per episode
         'max_waypt': 12,  # maximum number of waypoints
         'd_behind': 12,  # distance behind the ego vehicle (meter)
@@ -176,6 +175,7 @@ if __name__ == '__main__':
     }
     carla_raw_env = CarlaEnv(env_params)
     carla_processed_env = EncodeWrapper(carla_raw_env, visual, temp)
+    carla_processed_env.reset()
     print(colored("[+] Environment ready!", "green"))
     # endregion
 

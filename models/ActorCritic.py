@@ -1,8 +1,6 @@
 import numpy as np
 import torch.nn
 import torch.nn as nn
-from ray.rllib.agents.sac.sac_torch_model import SACTorchModel
-from ray.rllib.utils.typing import *
 import torch.nn.functional as F
 from typing import Union
 

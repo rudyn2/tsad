@@ -136,3 +136,7 @@ class VanillaRNNEncoder(nn.Module):
         # y (4*B, 512) => (B, 4*512, 1, 1) => (B, 512, 4, 4)
         y = self.output_upconv(y.data.view(embedding.shape[0], -1).unsqueeze(dim=-1).unsqueeze(dim=-1))
         return y
+
+    def freeze(self):
+        for param in self.parameters():
+            param.requires_grad = False
