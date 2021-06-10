@@ -17,7 +17,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Train model utility",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--embeddings', default='../dataset/embeddings.hdf5', type=str, help='Path to embeddings hdf5')
-    parser.add_argument('--metadata', default='../dataset/carla_dataset.json', type=str, help='Path to json file')
+    parser.add_argument('--metadata', default='../dataset/carla_dataset_repaired.json', type=str, help='Path to json file')
     parser.add_argument('--dataset', default='online', type=str, help='Type of dataset. online: all the dataset will'
                                                                       'be loaded into memory before training. '
                                                                       'offline: the embeddings'

@@ -141,12 +141,12 @@ class SACAgent(Agent):
     def update(self, replay_buffer, step):
         obs, action, reward, next_obs, not_done, not_done_no_max = replay_buffer.sample(self.batch_size)
 
-        wandb.log('train/batch_reward', np.array(reward).mean(), step)
+        wandb.log({'train/batch_reward': np.array(reward).mean()})
 
         self.update_critic(obs, action, reward, next_obs, not_done_no_max)
 
         if step % self.actor_update_frequency == 0:
-            self.update_actor_and_alpha(obs, step)
+            self.update_actor_and_alpha(obs)
 
         if step % self.critic_target_update_frequency == 0:
             utils.soft_update_params(self.critic, self.critic_target,

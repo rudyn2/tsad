@@ -13,11 +13,11 @@ from tqdm import tqdm
 
 class Merger(object):
 
-    def __init__(self, folder_path: str):
+    def __init__(self, folder_path: str, output_path: str):
         self.path = folder_path
         self.metadata = {}
-        self.hdf5_saver = HDF5Saver(288, 288, file_path_to_save=folder_path + "merge.hdf5")
-        self.json_saver = JsonSaver(path=folder_path + "merge.json")
+        self.hdf5_saver = HDF5Saver(288, 288, file_path_to_save=output_path + ".hdf5")
+        self.json_saver = JsonSaver(path=output_path + ".json")
         self._load_metadata()
         self.total_saved = 0
         self.total_discarded = 0
@@ -32,6 +32,9 @@ class Merger(object):
     def merge(self):
         # find all hdf5 files in provided path
         hdf5_files = glob(self.path + "*.hdf5")
+        print("The following files will be merged: ")
+        for hdf5_file in hdf5_files:
+            print(hdf5_file)
         for hdf5_file in hdf5_files:
             with h5py.File(hdf5_file, "r") as f:
                 self.process_hdf5_file(f)
@@ -71,6 +74,7 @@ if __name__ == '__main__':
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('datasets_folder', default='../dataset', type=str,
                         help='Path to dataset (just name, without extension')
+    parser.add_argument('--output', type=str, default="merge", help="Output path name (without extensions)")
     args = parser.parse_args()
-    i = Merger(args.datasets_folder)
+    i = Merger(args.datasets_folder, args.output)
     i.merge()

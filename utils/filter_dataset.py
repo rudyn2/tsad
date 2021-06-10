@@ -9,13 +9,13 @@ from json_saver import JsonSaver
 
 
 class Filter:
-    def __init__(self, hdf5_path: str, json_path: str, output_hdf5_path: str, output_json_path: str):
+    def __init__(self, hdf5_path: str, json_path: str, output_hdf5_path: str, output_json_path: str, speed_thresh: float):
         self.hdf5_path = hdf5_path
         self.json_path = json_path
         self.output_hdf5_path = output_hdf5_path
         self.output_json_path = output_json_path
 
-        self.threshold = 0.5
+        self.threshold = speed_thresh
         self.min_steps = 200
         self.hdf5_saver = HDF5Saver(288, 288, output_hdf5_path)
         self.json_saver = JsonSaver(output_json_path)
@@ -53,6 +53,7 @@ class Filter:
             total_saved_runs = 0
             too_short_runs = 0
             wrong_orientation_runs = 0
+            incomplete_metadata = 0
 
             for run in tqdm(run_keys, "Processing "):
                 counter = 0
@@ -63,13 +64,21 @@ class Filter:
                     continue
 
                 # process every step and check that at any step lane orientation is less than 90 degrees
-                for step in f[run].keys():
-                    if self.json_data[run][step]["lane_orientation"] > 90:
-                        good_orientation = False
-                    if self.json_data[run][step]["speed"] <= 0.00001 and self.json_data[run][step]["tl_state"] == "Green":
-                        counter += 1
+                try:
+                    for step in f[run].keys():
+                        lane_orientation = self.json_data[run][step]["lane_orientation"]
+                        hlc = self.json_data[run][step]['command']
+                        if lane_orientation > 90 and hlc not in ["LEFT", "RIGHT"]:
+                            good_orientation = False
+                        if self.json_data[run][step]["speed"] <= 0.00001 and self.json_data[run][step]["tl_state"] == "Green":
+                            counter += 1
+                except KeyError:
+                    incomplete_metadata += 1
+                    continue
 
                 wrong_orientation_runs += 1 if not good_orientation else 0
+                if not good_orientation:
+                    print(run, " discarded because one or more steps have an lane orientation greater than 90 degrees")
 
                 if counter / len(f[run]) < self.threshold and good_orientation:
                     # save run data
@@ -81,6 +90,7 @@ class Filter:
         print(f"Total saved runs: {total_saved_runs}/{len(run_keys)} ({100 * (total_saved_runs / len(run_keys)):.2f}%)")
         print(f"# too short runs discarded: {too_short_runs}")
         print(f"# wrong orientation runs discarded: {wrong_orientation_runs}")
+        print(f"# incomplete metadata runs discarded: {incomplete_metadata}")
 
 
 if __name__ == '__main__':
@@ -96,5 +106,5 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    f = Filter(args.input, args.metadata, args.output, args.output_metadata)
+    f = Filter(args.input, args.metadata, args.output, args.output_metadata, args.percentage)
     f.filter()

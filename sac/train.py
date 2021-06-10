@@ -6,7 +6,6 @@ import time
 import torch
 
 import sac.utils as utils
-from logger import Logger
 from models.carla_wrapper import EncodeWrapper
 from replay_buffer import MixedReplayBuffer
 from sac.agent.sac import SACAgent
@@ -41,18 +40,15 @@ class SACTrainer(object):
         for episode in range(self.num_eval_episodes):
             obs = self.env.reset()
             self.agent.reset()
-            # self.video_recorder.init(enabled=(episode == 0))
             done = False
             episode_reward = 0
             while not done:
                 with utils.eval_mode(self.agent):
                     action = self.agent.act(obs, sample=False)
                 obs, reward, done, _ = self.env.step(action)
-                # self.video_recorder.record(self.env)
                 episode_reward += reward
 
             average_episode_reward += episode_reward
-            # self.video_recorder.save(f'{self.step}.mp4')
         average_episode_reward /= self.num_eval_episodes
         wandb.log({'eval/episode_reward': average_episode_reward})
 
@@ -73,14 +69,12 @@ class SACTrainer(object):
 
                 wandb.log({'train/episode_reward': episode_reward})
 
-                print("Resetting")
+                print("\nResetting")
                 obs = self.env.reset()
                 self.agent.reset()
-                done = False
                 episode_reward = 0
                 episode_step = 0
                 episode += 1
-
                 wandb.log({'train/episode': episode})
 
             # sample action for data collection
@@ -92,7 +86,7 @@ class SACTrainer(object):
 
             # run training update
             if self.step >= self.num_seed_steps:
-                self.agent.update(self.replay_buffer, self.logger, self.step)
+                self.agent.update(self.replay_buffer, self.step)
 
             next_obs, reward, done, _ = self.env.step(action)
 
@@ -111,6 +105,7 @@ class SACTrainer(object):
             sys.stdout.write(f"Training step: {self.step}/{self.num_train_steps}")
 
 
+
 if __name__ == '__main__':
     import warnings
     import wandb
@@ -121,6 +116,7 @@ if __name__ == '__main__':
     from sac.agent.actor import DiagGaussianActor
     from sac.agent.critic import DoubleQCritic
     import argparse
+
     parser = argparse.ArgumentParser(description="SAC Trainer",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-i', '--input', required=True, default=None, type=str, help='path to hdf5 file')
