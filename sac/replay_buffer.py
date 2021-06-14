@@ -1,11 +1,11 @@
 import json
-import random
 
 import h5py
 import numpy as np
 import torch
 from tqdm import tqdm
 from sac.utils import calc_reward
+from typing import Tuple, Dict
 
 
 class StateObj(object):
@@ -18,20 +18,20 @@ class StateObj(object):
 class ReplayMemoryFast:
 
     # first we define init method and initialize buffer size
-    def __init__(self, memory_size):
+    def __init__(self, memory_size: int):
 
         # max number of samples to store
-        self.memory_size = memory_size
+        self.memory_size: int = memory_size
 
-        self.experience = [None] * self.memory_size
+        self.experience: list = [None] * self.memory_size
         self.current_index: int = 0
         self.size = 0
 
     # next we define the function called store for storing the experiences
-    def add(self, observation, action, reward, newobservation, not_done, not_done_no_max):
+    def add(self, observation, action, reward, newobservation, not_done):
 
         # store the experience as a tuple (current state, action, reward, next state, is it a terminal state)
-        self.experience[self.current_index] = (observation, action, reward, newobservation, not_done, not_done_no_max)
+        self.experience[int(self.current_index)] = (observation, action, reward, newobservation, not_done)
         self.current_index += 1
 
         self.size = min(self.size + 1, self.memory_size)
@@ -40,13 +40,13 @@ class ReplayMemoryFast:
         if self.current_index >= self.memory_size:
             self.current_index -= self.memory_size
 
-    # we define a function called sample for sampling the minibatch of experience
+    # we define a function called sample for sampling a minibatch of experience
     def sample(self, batch_size: int) -> list:
         """
         Sample from buffer.
         :param batch_size: number of samples to collect.
         :type batch_size: int
-        :return: a list with 6 lists (observation, action, reward, new_observation, not_done, not_done_no_max)
+        :return: a list of tuples (observation, action, reward, new_observation, not_done)
         :rtype: list
         """
         if self.size < batch_size:
@@ -65,7 +65,7 @@ class ReplayMemoryFast:
         Sample from buffer
         :param batch_size: number of samples to collect.
         :type batch_size: int
-        :return: a list of tuples (observation, action, reward, new_observation, not_done, not_done_no_max)
+        :return: a list of tuples (observation, action, reward, new_observation, not_done)
         :rtype: list
         """
         if self.size < batch_size:
@@ -90,11 +90,15 @@ class MixedReplayBuffer(object):
         'LANEFOLLOW': 3
     }
 
-    def __init__(self, online_memory_size: int, offline_buffer_hdf5: str, offline_buffer_json: str):
+    def __init__(self, online_memory_size: int, offline_buffer_hdf5: str = None, offline_buffer_json: str = None):
         self._offline_buffer_hdf5_path = offline_buffer_hdf5
         self._offline_buffer_json_path = offline_buffer_json
         self._online_buffer = ReplayMemoryFast(online_memory_size)
-        self._offline_buffer = self._load()
+
+        if self._offline_buffer_json_path and self._offline_buffer_hdf5_path:
+            self._offline_buffer = self._load()
+        else:
+            self._offline_buffer = None
 
     def _get_total_steps(self):
         total_steps = 0
@@ -117,13 +121,14 @@ class MixedReplayBuffer(object):
                 offline_buffer.memory_size += len(steps)
                 for idx in range(len(steps) - 1):
                     step, next_step = steps[idx], steps[idx + 1]
-                    done = 1 if idx == len(steps) - 1 else 0
+                    not_done = 0 if idx == len(steps) - 1 else 1
                     transition = self._get_transition(f[run_id], episode_metadata, step, next_step)
-                    transition = *transition, done, done
+                    transition = *transition, not_done
                     offline_buffer.add(*transition)
         return offline_buffer
 
-    def _get_transition(self, h5py_group: h5py.File, metadata_json: dict, step: str, next_step: str):
+    def _get_transition(self, h5py_group: h5py.File, metadata_json: dict, step: str, next_step: str) \
+            -> Tuple[Dict[str, np.ndarray], np.ndarray, float, Dict[str, np.ndarray]]:
 
         visual, next_visual = np.array(h5py_group[step]), np.array(h5py_group[step])
         step_metadata, next_step_metadata = metadata_json[step], metadata_json[next_step]
@@ -133,81 +138,42 @@ class MixedReplayBuffer(object):
                                float(self.HLC_TO_NUMBER[next_step_metadata['command']])])
         observation = dict(visual=visual, state=state)
         next_observation = dict(visual=next_visual, state=next_state)
-        reward = calc_reward(step_metadata)          # tbd
+        reward = calc_reward(step_metadata)
         action = np.array([float(step_metadata['control']['steer']),
                            float(step_metadata['control']['throttle']),
                            float(step_metadata['control']['brake'])])
         return observation, action, reward, next_observation
 
-    def sample(self, batch_size: int, offline: float):
+    def sample(self, batch_size: int, offline: float) -> Tuple[list, list]:
+        """
+        Returns a tuple of offline samples and online samples. <offline> should be the relative size of the
+        offline samples.
+        """
         assert 0 <= offline <= 1, f"Offline relative size should be between 0 and 1, got: {offline}"
         online_batch_size = int(batch_size * (1 - offline))
         offline_batch_size = batch_size - online_batch_size
 
         offline_samples = self._offline_buffer.unpacked_sample(offline_batch_size)
-        online_samples = self._online_buffer.unpacked_sample(online_batch_size)
-        if len(online_samples) == 0:
+
+        if len(offline_samples) == 0:
+            online_samples = self._offline_buffer.unpacked_sample(batch_size)
+        else:
             online_samples = self._offline_buffer.unpacked_sample(online_batch_size)
 
+        # if it couldn't collect enough samples, return an empty list
+        if len(online_samples) + len(offline_samples) < batch_size:
+            return [], []
         return offline_samples, online_samples
 
-    def add(self, obs, action, reward, next_obs, done, done_no_max):
-        pass
-
-# class ReplayBuffer(object):
-#     """Buffer to store environment transitions."""
-#
-#     def __init__(self, obs_shape, action_shape, capacity, device):
-#         self.capacity = capacity
-#         self.device = device
-#
-#         # the proprioceptive obs is stored as float32, pixels obs as uint8
-#         obs_dtype = np.float32 if len(obs_shape) == 1 else np.uint8
-#
-#         self.obses = np.empty((capacity, *obs_shape), dtype=obs_dtype)
-#         self.next_obses = np.empty((capacity, *obs_shape), dtype=obs_dtype)
-#         self.actions = np.empty((capacity, *action_shape), dtype=np.float32)
-#         self.rewards = np.empty((capacity, 1), dtype=np.float32)
-#         self.not_dones = np.empty((capacity, 1), dtype=np.float32)
-#         self.not_dones_no_max = np.empty((capacity, 1), dtype=np.float32)
-#
-#         self.idx = 0
-#         self.last_save = 0
-#         self.full = False
-#
-#     def __len__(self):
-#         return self.capacity if self.full else self.idx
-#
-#     def add(self, obs, action, reward, next_obs, done, done_no_max):
-#         np.copyto(self.obses[self.idx], obs)
-#         np.copyto(self.actions[self.idx], action)
-#         np.copyto(self.rewards[self.idx], reward)
-#         np.copyto(self.next_obses[self.idx], next_obs)
-#         np.copyto(self.not_dones[self.idx], not done)
-#         np.copyto(self.not_dones_no_max[self.idx], not done_no_max)
-#
-#         self.idx = (self.idx + 1) % self.capacity
-#         self.full = self.full or self.idx == 0
-#
-#     def sample(self, batch_size):
-#         idxs = np.random.randint(0,
-#                                  self.capacity if self.full else self.idx,
-#                                  size=batch_size)
-#
-#         obses = torch.as_tensor(self.obses[idxs], device=self.device).float()
-#         actions = torch.as_tensor(self.actions[idxs], device=self.device)
-#         rewards = torch.as_tensor(self.rewards[idxs], device=self.device)
-#         next_obses = torch.as_tensor(self.next_obses[idxs],
-#                                      device=self.device).float()
-#         not_dones = torch.as_tensor(self.not_dones[idxs], device=self.device)
-#         not_dones_no_max = torch.as_tensor(self.not_dones_no_max[idxs],
-#                                            device=self.device)
-#
-#         return obses, actions, rewards, next_obses, not_dones, not_dones_no_max
+    def add(self, obs, action, reward, next_obs, done):
+        """
+        Add a transition to the online buffer.
+        """
+        self._online_buffer.add(obs, action, reward, next_obs, done)
 
 
 if __name__ == '__main__':
     mixed_replay_buffer = MixedReplayBuffer(512,
-                                            offline_buffer_hdf5='/tmp/embeddings_noflat.hdf5',
-                                            offline_buffer_json='/tmp/carla_dataset_temp.json')
-    sample = mixed_replay_buffer.sample(batch_size=512, offline=0.7)
+                                            offline_buffer_hdf5='../data/embeddings_noflat.hdf5',
+                                            offline_buffer_json='../data/carla_dataset.json')
+    offline, online = mixed_replay_buffer.sample(batch_size=512, offline=0.7)

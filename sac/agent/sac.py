@@ -111,18 +111,32 @@ class SACAgent(Agent):
         critic_loss.backward()
         self.critic_optimizer.step()
 
-    def update_actor_and_alpha(self, obs):
+    def update_actor_and_alpha(self, obs, obs_e, act_e):
+        # behavioral cloning component
+        log_prob_e = None
+        if obs_e and act_e:
+            dist_e = self.actor(obs_e)
+            log_prob_e = dist_e.log_prob(act_e).sum(-1, keepdim=True)
+
+        # on-policy actor loss
         dist = self.actor(obs)
         action = dist.rsample()
         log_prob = dist.log_prob(action).sum(-1, keepdim=True)
 
         actor_Q1, actor_Q2 = self.critic(obs, action)
         actor_Q = torch.min(actor_Q1, actor_Q2)
-        actor_loss = (self.alpha.detach() * log_prob - actor_Q).mean()
+
+        if log_prob_e:
+            actor_loss = (self.alpha.detach() * log_prob - actor_Q + log_prob_e).mean()
+        else:
+            actor_loss = (self.alpha.detach() * log_prob - actor_Q).mean()
 
         wandb.log({'train_actor/loss', actor_loss})
         wandb.log({'train_actor/target_entropy': self.target_entropy})
         wandb.log({'train_actor/entropy', -log_prob.mean()})
+
+        if log_prob_e:
+            wandb.log({'train_actor/bc_loss': -log_prob_e.mean()})
 
         # optimize the actor
         self.actor_optimizer.zero_grad()
@@ -139,14 +153,24 @@ class SACAgent(Agent):
             self.log_alpha_optimizer.step()
 
     def update(self, replay_buffer, step):
-        obs, action, reward, next_obs, not_done, not_done_no_max = replay_buffer.sample(self.batch_size)
+        offline_samples, online_samples = replay_buffer.sample(self.batch_size)
+
+        # if there aren't enough samples, skip this update until the replay buffer is bigger
+        if len(online_samples) == 0 and len(offline_samples) == 0:
+            return
+
+        obs, action, reward, next_obs, not_done = online_samples            # online experience
+
+        offline_obs, offline_act = None, None
+        if len(offline_samples) > 0:
+            offline_obs, offline_act, _, _, _ = list(zip(*offline_samples))     # expert experience
 
         wandb.log({'train/batch_reward': np.array(reward).mean()})
 
-        self.update_critic(obs, action, reward, next_obs, not_done_no_max)
+        self.update_critic(obs, action, reward, next_obs, not_done)
 
         if step % self.actor_update_frequency == 0:
-            self.update_actor_and_alpha(obs)
+            self.update_actor_and_alpha(obs, offline_obs, offline_act)
 
         if step % self.critic_target_update_frequency == 0:
             utils.soft_update_params(self.critic, self.critic_target,

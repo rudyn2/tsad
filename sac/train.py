@@ -3,6 +3,7 @@ import os
 import sys
 import time
 
+import cv2
 import torch
 
 import sac.utils as utils
@@ -10,6 +11,7 @@ from models.carla_wrapper import EncodeWrapper
 from replay_buffer import MixedReplayBuffer
 from sac.agent.sac import SACAgent
 from termcolor import colored
+from sac.rl_logger import RLLogger
 
 
 class SACTrainer(object):
@@ -32,6 +34,7 @@ class SACTrainer(object):
         self.env = env
         self.agent = agent
         self.replay_buffer = buffer
+        self.logger = RLLogger()
 
         self.step = 0
 
@@ -83,19 +86,17 @@ class SACTrainer(object):
             else:
                 with utils.eval_mode(self.agent):
                     action = self.agent.act(obs, sample=True)
+            self.logger.log(action)
 
             # run training update
             if self.step >= self.num_seed_steps:
                 self.agent.update(self.replay_buffer, self.step)
 
             next_obs, reward, done, _ = self.env.step(action)
-
-            # allow infinite bootstrap
-            done = float(done)
-            done_no_max = 0 if episode_step + 1 == self.env.max_episode_steps else done
+            not_done = 1 - float(done)
             episode_reward += reward
 
-            self.replay_buffer.add(obs, action, reward, next_obs, done, done_no_max)
+            self.replay_buffer.add(obs, action, reward, next_obs, not_done)
 
             obs = next_obs
             episode_step += 1
@@ -104,6 +105,10 @@ class SACTrainer(object):
             sys.stdout.write("\r")
             sys.stdout.write(f"Training step: {self.step}/{self.num_train_steps}")
 
+    def end(self):
+        self.env.reset()
+        cv2.destroyAllWindows()
+        self.logger.close()
 
 
 if __name__ == '__main__':
@@ -121,6 +126,7 @@ if __name__ == '__main__':
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-i', '--input', required=True, default=None, type=str, help='path to hdf5 file')
     parser.add_argument('-m', '--metadata', default=None, type=str, help='path to json file')
+    parser.add_argument('--debug', action='store_true', help='Whether or not visualize actor input')
     args = parser.parse_args()
 
     warnings.filterwarnings("ignore")
@@ -170,7 +176,7 @@ if __name__ == '__main__':
         'reduction_at_intersection': 0.75
     }
     carla_raw_env = CarlaEnv(env_params)
-    carla_processed_env = EncodeWrapper(carla_raw_env, visual, temp)
+    carla_processed_env = EncodeWrapper(carla_raw_env, visual, temp, debug=args.debug)
     carla_processed_env.reset()
     print(colored("[+] Environment ready!", "green"))
     # endregion
@@ -194,9 +200,9 @@ if __name__ == '__main__':
 
     # region: init buffer
     print(colored("[*] Initializing Mixed Replay Buffer", "white"))
-    mixed_replay_buffer = MixedReplayBuffer(online_memory_size,
-                                            offline_buffer_hdf5=offline_dataset_path["hdf5"],
-                                            offline_buffer_json=offline_dataset_path["json"])
+    mixed_replay_buffer = MixedReplayBuffer(online_memory_size)
+    # offline_buffer_hdf5=offline_dataset_path["hdf5"],
+    # offline_buffer_json=offline_dataset_path["json"])
     print(colored("[*] Initializing Mixed Replay Buffer", "green"))
     # endregion
 
@@ -215,4 +221,7 @@ if __name__ == '__main__':
                          buffer=mixed_replay_buffer,
                          **train_params
                          )
-    trainer.run()
+    try:
+        trainer.run()
+    finally:
+        trainer.end()
