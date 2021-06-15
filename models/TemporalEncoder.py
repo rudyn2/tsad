@@ -98,7 +98,7 @@ class VanillaRNNEncoder(nn.Module):
         )
 
         self.speed_cod = nn.Sequential(
-            nn.Linear(2, 16),
+            nn.Linear(3, 16),
             nn.ReLU(),
             nn.Linear(16, speed_chn)
         )
