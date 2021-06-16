@@ -58,8 +58,9 @@ class CarlaEmbeddingDataset(Dataset):
         with h5py.File(self._path, "r") as f:
             embeddings = [np.array(f[run_id][t]) for t in windows_ts]
             control = self._metadata[run_id][windows_ts[-2]]['control']
+            metadata = self._metadata[run_id][windows_ts[-2]]
             action = torch.tensor([control['steer'], control['throttle'], control['brake']])
-            speed = torch.tensor([self._metadata[run_id][windows_ts[-2]]['speed']])
+            speed = torch.tensor([metadata['speed_x'], metadata['speed_y'], metadata['speed_y']])
             return torch.tensor(embeddings[:-1]), action, speed, torch.tensor(embeddings[-1])
 
     def __len__(self):

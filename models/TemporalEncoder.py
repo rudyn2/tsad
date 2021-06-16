@@ -92,13 +92,13 @@ class VanillaRNNEncoder(nn.Module):
         )
 
         self.action_cod = nn.Sequential(
-            nn.Linear(2, 16),
+            nn.Linear(3, 16),
             nn.ReLU(),
             nn.Linear(16, action__chn)
         )
 
         self.speed_cod = nn.Sequential(
-            nn.Linear(2, 16),
+            nn.Linear(3, 16),
             nn.ReLU(),
             nn.Linear(16, speed_chn)
         )
