@@ -6,7 +6,7 @@ import torch
 
 from models.ADEncoder import ADEncoder
 from models.carlaDatasetSimple import CarlaDatasetSimple
-from scripts.visualize import labels_to_cityscapes_palette, depth2grayscale
+from scripts.visualize import labels_to_cityscapes_palette
 
 if __name__ == "__main__":
     import argparse

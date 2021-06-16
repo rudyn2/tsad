@@ -241,7 +241,9 @@ class EfficientNetBackbone(nn.Module):
         super(EfficientNetBackbone, self).__init__()
         self.name = name
         self.backbone = EfficientNet.from_name(name, in_channels=4, include_top=False)
-        self.conv_adjust_channels = torch.nn.Conv2d(self.CHANNELS_EFFICIENTNET[name], 512, kernel_size=(1, 1))
+        self.conv_adjust_channels = torch.nn.Conv2d(self.CHANNELS_EFFICIENTNET[name], 512,
+                                                    kernel_size=(1, 1),
+                                                    bias=False)
         self.pool_adjust_dim = torch.nn.AdaptiveAvgPool2d((4, 4))
 
     def forward(self, x):

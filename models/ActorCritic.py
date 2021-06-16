@@ -23,26 +23,6 @@ class TwoLayerMLP(nn.Module):
         return x
 
 
-class SEBlock(nn.Module):
-    "credits: https://github.com/moskomule/senet.pytorch/blob/master/senet/se_module.py#L4"
-
-    def __init__(self, c, r=16):
-        super(SEBlock, self).__init__()
-        self.squeeze = nn.AdaptiveAvgPool2d(1)
-        self.excitation = nn.Sequential(
-            nn.Linear(c, c // r, bias=False),
-            nn.ReLU(inplace=True),
-            nn.Linear(c // r, c, bias=False),
-            nn.Sigmoid()
-        )
-
-    def forward(self, x):
-        bs, c, _, _ = x.shape
-        y = self.squeeze(x).view(bs, c)
-        y = self.excitation(y).view(bs, c, 1, 1)
-        return x * y.expand_as(x)
-
-
 class ConvReduction(nn.Module):
     """
     Takes a tensor with shape (B,C,H,W) and returns a tensor with shape (B,C). To achieve this two convolution layers
@@ -108,26 +88,24 @@ class Actor(nn.Module):
     def forward(self, obs: Union[list, tuple, dict]):
 
         if isinstance(obs, list) or isinstance(obs, tuple):
-            visual_embedding = torch.stack([o['visual'].to(self._device) for o in obs], dim=0)
-            state = torch.stack([o['state'].to(self._device) for o in obs], dim=0).float()
-            speed = state[:, :2]
-            hlc = state[:, 2]
+            # if the observation is an iterable, then this method is going to be used for TRAINING in a batch-wise
+            encoding = torch.stack([o['encoding'].to(self._device) for o in obs], dim=0)
+            speed = torch.stack([o['speed'].to(self._device) for o in obs], dim=0).float()
+            hlc = torch.stack([o['hlc'].to(self._device) for o in obs], dim=0).float()
         elif isinstance(obs, dict):
-            visual_embedding = obs['visual'].unsqueeze(0).float()
-            state = obs['state']
-            speed = state[:2].unsqueeze(0).float()
-            hlc = state[2].unsqueeze(0)
+            # if the observation is a dict, then this method is going to be used for ACTION SELECTION
+            encoding = obs['encoding'].unsqueeze(0).float()
+            speed = torch.tensor(obs['speed'], device=self._device).unsqueeze(0).float()
+            hlc = torch.tensor(obs['hlc'], device=self._device).unsqueeze(0).float()
         else:
             raise ValueError(f"Expected input of type list, tuple or dict but got: {type(obs)}")
 
-        x = self.conv_reduction(visual_embedding)  # B,1024,4,4 -> 1024
+        x = self.conv_reduction(encoding)  # B,1024,4,4 -> 1024
         speed_embedding = self.speed_mlp(speed)  # B,2, -> 128,
         x_speed = torch.cat([x, speed_embedding], dim=1)  # B,[1024, 128] -> B,1152
 
         # forward
-        pred_branches = []
-        for c in ["right", "left", "straight", "follow_lane"]:
-            pred_branches.append(self.branches[c](x_speed))
+        pred_branches = [self.branches[c](x_speed) for c in ["right", "left", "straight", "follow_lane"]]
 
         # unpack using hlc mask
         mask = hlc.long()

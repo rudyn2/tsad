@@ -13,6 +13,13 @@ from sac.agent.sac import SACAgent
 from termcolor import colored
 from sac.rl_logger import RLLogger
 
+ROAD_OPTION_TO_NAME = {
+    0: "Left",
+    1: "Right",
+    2: "Straight",
+    3: "Lane Follow"
+}
+
 
 class SACTrainer(object):
     def __init__(self,
@@ -86,7 +93,6 @@ class SACTrainer(object):
             else:
                 with utils.eval_mode(self.agent):
                     action = self.agent.act(obs, sample=True)
-            self.logger.log(action)
 
             # run training update
             if self.step >= self.num_seed_steps:
@@ -101,6 +107,10 @@ class SACTrainer(object):
             obs = next_obs
             episode_step += 1
             self.step += 1
+
+            self.logger.log(f"({self.step}/{self.num_train_steps:.0f}), "
+                            f"[{episode}:{episode_step}:{ROAD_OPTION_TO_NAME[obs['hlc']]}]| "
+                            f"reward: {reward:.2f}, acc: {action[0]:.3f}, steer: {action[1]:.3f}, done: {done}")
 
             sys.stdout.write("\r")
             sys.stdout.write(f"Training step: {self.step}/{self.num_train_steps}")
@@ -157,7 +167,7 @@ if __name__ == '__main__':
 
     print(colored("[*] Initializing environment", "white"))
     env_params = {
-        'number_of_vehicles': 100,
+        'number_of_vehicles': 0,
         'number_of_walkers': 0,
         'display_size': 256,  # screen size of bird-eye render
         'max_past_step': 1,  # the number of past steps to draw
@@ -167,7 +177,7 @@ if __name__ == '__main__':
         'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
         'port': 2000,  # connection port
         'town': 'Town01',  # which town to simulate
-        'max_time_episode': 1000,  # maximum timesteps per episode
+        'max_time_episode': 100,  # maximum timesteps per episode
         'max_waypt': 12,  # maximum number of waypoints
         'd_behind': 12,  # distance behind the ego vehicle (meter)
         'out_lane_thres': 2.0,  # threshold for out of lane
@@ -185,7 +195,7 @@ if __name__ == '__main__':
     print(colored("[*] Initializing actor critic models", "white"))
     actor = DiagGaussianActor(action_dim=action_dim,
                               hidden_dim=actor_hidden_dim,
-                              log_std_bounds=(-5, 12)
+                              log_std_bounds=(-3, 3)
                               )
     critic = DoubleQCritic(action_dim=action_dim,
                            hidden_dim=critic_hidden_dim)
@@ -213,7 +223,7 @@ if __name__ == '__main__':
         "num_eval_episodes": 5,
         "num_train_steps": 1e6,
         "eval_frequency": 10000,
-        "num_seed_steps": 5000
+        "num_seed_steps": 200
     }
     print(colored("Training", "white"))
     trainer = SACTrainer(env=carla_processed_env,

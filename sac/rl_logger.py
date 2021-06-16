@@ -12,6 +12,7 @@ class RLLogger(object):
 
     def log(self, msg: str):
         self.file_pointer.write(colored(f'{datetime.datetime.now()}:', 'red') + f' {msg}\n')
+        self.file_pointer.flush()
 
     def close(self):
         self.file_pointer.close()

@@ -144,7 +144,7 @@ class MixedReplayBuffer(object):
                            float(step_metadata['control']['brake'])])
         return observation, action, reward, next_observation
 
-    def sample(self, batch_size: int, offline: float) -> Tuple[list, list]:
+    def sample(self, batch_size: int, offline: float = 0.25) -> Tuple[list, list]:
         """
         Returns a tuple of offline samples and online samples. <offline> should be the relative size of the
         offline samples.
@@ -153,12 +153,15 @@ class MixedReplayBuffer(object):
         online_batch_size = int(batch_size * (1 - offline))
         offline_batch_size = batch_size - online_batch_size
 
-        offline_samples = self._offline_buffer.unpacked_sample(offline_batch_size)
+        offline_samples = []
+        if self._offline_buffer:
+            offline_samples = self._offline_buffer.unpacked_sample(offline_batch_size)
 
-        if len(offline_samples) == 0:
-            online_samples = self._offline_buffer.unpacked_sample(batch_size)
-        else:
-            online_samples = self._offline_buffer.unpacked_sample(online_batch_size)
+        if len(offline_samples) == 0:   # then either the buffer doesn't exists or doesn't have enough samples
+            # so, we try to pull all of them from the online buffer
+            online_samples = self._online_buffer.unpacked_sample(batch_size)
+        else:   # if we have samples from the offline buffer, then we just get the missing ones
+            online_samples = self._online_buffer.unpacked_sample(online_batch_size)
 
         # if it couldn't collect enough samples, return an empty list
         if len(online_samples) + len(offline_samples) < batch_size:

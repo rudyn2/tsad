@@ -83,3 +83,4 @@ class DiagGaussianActor(nn.Module):
 
         dist = SquashedNormal(mu, std)
         return dist
+

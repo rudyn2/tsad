@@ -10,6 +10,7 @@ from collections import deque
 from gym.core import Wrapper
 import cv2
 
+
 class EncodeWrapper(Wrapper):
 
     def __init__(self,
@@ -20,7 +21,6 @@ class EncodeWrapper(Wrapper):
                  debug: bool = True):
         super(EncodeWrapper, self).__init__(env)
 
-        self.max_episode_steps = 1000
         self._device = device
         self._visual_encoder = visual_encoder
         self._temporal_encoder = temporal_encoder
@@ -28,6 +28,7 @@ class EncodeWrapper(Wrapper):
         self._visual_encoder.to(self._device)
         self._temporal_encoder.to(self._device)
 
+        self.step_ = 0
         self._visual_buffer = deque(maxlen=4)
         self._last_speed = None
         self.max_episode_steps = 1000
@@ -69,7 +70,7 @@ class EncodeWrapper(Wrapper):
         # this is needed to include the temporal encoding
         return self.step([0, 0])[0]
 
-    def step(self, action: list) -> Tuple[Tensor, float, bool, dict]:
+    def step(self, action: list) -> Tuple[Dict, float, bool, dict]:
         """
         observation (object): agent's observation of the current environment
         reward (float) : amount of reward returned after previous action
@@ -90,7 +91,13 @@ class EncodeWrapper(Wrapper):
         encoding = torch.cat([visual_encoding.to(self._device),
                               temporal_encoding], dim=1).squeeze(0)
 
-        return encoding, reward, done, info
+        obs = {
+            "encoding": encoding,
+            "speed": self._last_speed,
+            "hlc": int(observation['state'][-1]) - 1
+        }
+
+        return obs, reward, done, info
 
     def create_temporal_encoding(self, action: list) -> Tensor:
         """
@@ -123,42 +130,6 @@ class EncodeWrapper(Wrapper):
         return encoded_obs
 
 
-class DummyWrapper(gym.Env):
-
-    def __init__(self, config):
-        super(DummyWrapper, self).__init__()
-        self.steps = 0
-        self.end_step = config['steps']
-        self._max_episode_steps = config['steps']
-        self.action_space = spaces.Box(np.array([0, 1]),
-                                       np.array([-1, 1]),
-                                       dtype=np.float32)  # acc, steer
-        observation_space_dict = {
-            'visual': spaces.Box(low=0, high=1, shape=(1024, 4, 4), dtype=np.float32),
-            'state': spaces.Box(np.array([-2, -1, -5, 0]), np.array([2, 1, 30, 1]), dtype=np.float32)
-        }
-
-        self.observation_space = spaces.Dict(observation_space_dict)
-
-    def render(self, mode='human'):
-        pass
-
-    def step(self, action):
-        self.steps += 1
-        done = self.steps == self.end_step
-        return {"visual": torch.rand((1024, 4, 4)),
-                "state": torch.randint(0, high=4, size=(3,))}, random.random(), done, {}
-
-    def reset(self, **kwargs):
-        self.steps = 0
-        return {"visual": torch.rand((1024, 4, 4)),
-                "state": torch.randint(0, high=4, size=(3,))}
-
-    @property
-    def max_episode_steps(self):
-        return self._max_episode_steps
-
-
 if __name__ == '__main__':
     from ADEncoder import ADEncoder
     from TemporalEncoder import VanillaRNNEncoder
@@ -172,12 +143,12 @@ if __name__ == '__main__':
         'display_size': 256,  # screen size of bird-eye render
         'max_past_step': 1,  # the number of past steps to draw
         'dt': 0.05,  # time interval between two frames
-        'continuous_accel_range': [-3.0, 3.0],  # continuous acceleration range
-        'continuous_steer_range': [-0.3, 0.3],  # continuous steering angle range
+        'continuous_accel_range': [-1, 1],  # continuous acceleration range
+        'continuous_steer_range': [-1, 1],  # continuous steering angle range
         'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
         'port': 2000,  # connection port
         'town': 'Town03',  # which town to simulate
-        'max_time_episode': 1000,  # maximum timesteps per episode
+        'max_time_episode': 100,  # maximum timesteps per episode
         'max_waypt': 12,  # maximum number of waypoints
         'd_behind': 12,  # distance behind the ego vehicle (meter)
         'out_lane_thres': 2.0,  # threshold for out of lane
@@ -186,8 +157,9 @@ if __name__ == '__main__':
         'reduction_at_intersection': 0.75
     }
     carla_raw_env = CarlaEnv(params)
-    carla_processed_env = EncodeWrapper(carla_raw_env, visual, temp)
+    carla_processed_env = EncodeWrapper(carla_raw_env, visual, temp, debug=True)
+    carla_processed_env.reset()
     obs = carla_processed_env.reset()
     for _ in range(100):
         obs, reward, done, info = carla_processed_env.step([1, 0])
-        print(obs.shape, reward, done)
+        print(obs['encoding'].shape)

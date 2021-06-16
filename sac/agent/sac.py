@@ -49,6 +49,11 @@ class SACAgent(Agent):
         self.critic_target.load_state_dict(self.critic.state_dict())
         self.actor = actor
 
+        # move actor and critic to specified device
+        self.critic.to(self.device)
+        self.actor.to(self.device)
+        self.critic_target.to(self.device)
+
         self.log_alpha = torch.tensor(np.log(init_temperature)).to(self.device)
         self.log_alpha.requires_grad = True
         # set target entropy to -|A|
@@ -80,8 +85,6 @@ class SACAgent(Agent):
         return self.log_alpha.exp()
 
     def act(self, obs, sample=False):
-        obs['visual'] = obs['visual'].to(self.device)
-        obs['state'] = obs['state'].to(self.device)
         dist = self.actor(obs)
         action = dist.sample() if sample else dist.mean
         action = action.clamp(*self.action_range)
@@ -165,7 +168,8 @@ class SACAgent(Agent):
         if len(offline_samples) > 0:
             offline_obs, offline_act, _, _, _ = list(zip(*offline_samples))     # expert experience
 
-        wandb.log({'train/batch_reward': np.array(reward).mean()})
+        wandb.log({'train/batch_reward': np.array(reward).mean()
+                   })
 
         self.update_critic(obs, action, reward, next_obs, not_done)
 
