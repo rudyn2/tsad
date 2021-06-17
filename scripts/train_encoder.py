@@ -1,5 +1,5 @@
 from ignite.engine import Events, create_supervised_trainer, create_supervised_evaluator
-from ignite.metrics import Accuracy, Loss
+from ignite.metrics import Accuracy, Loss, RunningAverage
 from termcolor import colored
 from tqdm import tqdm
 from torch.utils.data import random_split, DataLoader
@@ -22,13 +22,13 @@ def trainer_output_transform(x, y, y_pred, loss):
     }
 
 
-def output_transform_tl(output):
+def output_transform_tl(process_output):
     """
     Output transform for traffic light status metrics.
     """
-    y_pred = output['y_pred']['traffic_light_status'].argmax(dim=1)
-    y = output['y']['traffic_light_status'].argmax(dim=1)
-    return y_pred, y    # output format is according to `Accuracy` docs
+    y_pred = process_output[0]['traffic_light_status'].argmax(dim=1)
+    y = process_output[1]['traffic_light_status'].argmax(dim=1)
+    return y_pred, y   # output format is according to `Accuracy` docs
 
 
 def wandb_iteration_completed_transform(output):
@@ -61,51 +61,50 @@ def run(args):
                   pd_weights=args.pd_weights)
     print(colored("[+] Model, optimizer and loss are ready!", "green"))
 
-    tl_accuracy = Accuracy(output_transform=output_transform_tl)
+    metrics = {
+        'accuracy': Accuracy(output_transform=output_transform_tl)
+    }
     trainer = create_supervised_trainer(model,
                                         optimizer,
                                         loss,
                                         prepare_batch=prepare_batch,
-                                        output_transform=trainer_output_transform,
                                         device=device)
-    tl_accuracy.attach(trainer, "tl_accuracy")
-    evaluator = create_supervised_evaluator(model, metrics={}, device=device)  # TODO: include required metrics
 
-    desc = "ITERATION - loss: {:.2f} - tl-acc: {:.2f}"
+    train_evaluator = create_supervised_evaluator(model, metrics=metrics, device=device, prepare_batch=prepare_batch)
+    val_evaluator = create_supervised_evaluator(model, metrics=metrics, device=device, prepare_batch=prepare_batch)  # TODO: include required metrics
+
+    desc = "ITERATION - loss: {:.2f}"
     pbar = tqdm(
         initial=0, leave=False, total=len(train_loader),
-        desc=desc.format(0, 0)
+        desc=desc.format(0)
     )
 
     @trainer.on(Events.ITERATION_COMPLETED(every=log_interval))
     def log_training_loss(engine):
-        pbar.desc = desc.format(engine.state.output['loss'],
-                                tl_accuracy.compute())
+        pbar.desc = desc.format(engine.state.output)
         pbar.update(log_interval)
         # wandb.log({"train loss": engine.state.output})
 
     @trainer.on(Events.EPOCH_COMPLETED)
     def log_training_results(engine):
         pbar.refresh()
-        evaluator.run(train_loader)
-        metrics = evaluator.state.metrics
+        train_evaluator.run(train_loader)
+        metrics = train_evaluator.state.metrics
         # TODO: Put here the desired metrics
-        avg_accuracy = 0
-        avg_nll = 0
+        avg_accuracy = metrics['accuracy']
         tqdm.write(
-            "Training Results - Epoch: {}  Avg accuracy: {:.2f} Avg loss: {:.2f}"
-                .format(engine.state.epoch, avg_accuracy, avg_nll)
+            "Training Results - Epoch: {}  Avg accuracy: {:.2f}"
+                .format(engine.state.epoch, avg_accuracy)
         )
 
     @trainer.on(Events.EPOCH_COMPLETED)
     def log_validation_results(engine):
-        evaluator.run(val_loader)
-        metrics = evaluator.state.metrics
+        val_evaluator.run(val_loader)
+        metrics = val_evaluator.state.metrics
         avg_accuracy = metrics['accuracy']
-        avg_nll = metrics['nll']
         tqdm.write(
-            "Validation Results - Epoch: {}  Avg accuracy: {:.2f} Avg loss: {:.2f}"
-                .format(engine.state.epoch, avg_accuracy, avg_nll))
+            "Validation Results - Epoch: {}  Avg accuracy: {:.2f} "
+                .format(engine.state.epoch, avg_accuracy))
 
         pbar.n = pbar.last_print_n = 0
         # wandb.log({"validation loss": avg_nll})
@@ -132,14 +131,14 @@ def run(args):
         trainer,
         event_name=Events.ITERATION_COMPLETED,
         tag="training",
-        metric_names=["tl_accuracy"]
+        output_transform=lambda loss: {"loss": loss}
     )
 
     wandb_logger.attach_output_handler(
-        evaluator,
+        train_evaluator,
         event_name=Events.EPOCH_COMPLETED,
         tag="training",
-        metric_names=["nll", "accuracy"],
+        metric_names=["accuracy"],
         global_step_transform=lambda *_: trainer.state.iteration,
     )
 
@@ -190,7 +189,5 @@ if __name__ == '__main__':
     args.loss_weights = weights_to_tuple(args.loss_weights)
     args.tl_weights = weights_to_tuple(args.tl_weights)
     args.pd_weights = weights_to_tuple(args.pd_weights)
-
-    assert len(args.tl_weights) == 2
 
     run(args)
