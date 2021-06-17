@@ -112,7 +112,7 @@ def train_for_classification(net, dataset, optimizer,
                            'train/acc PED': float(avg_pd_acc), 'train/loss PED': float(avg_pd_loss),
                            'train/loss SEG': float(avg_seg_loss), 'train/loss TL': float(avg_tl_loss),
                            'train/acc SEG': float(avg_seg_acc), 'train/loss VA': float(avg_va_loss),
-                           'train/recall PED': float(avg_pd_recall)}, step=global_step)
+                           'train/recall PED': float(avg_pd_recall), 'train/recall TL': float(avg_tl_recall)}, step=global_step)
             global_step += 1
 
         tiempo_epochs += time.time() - inicio_epoch
@@ -329,7 +329,7 @@ if __name__ == "__main__":
 
     tl_loss_weights = torch.tensor(tl_weights).to(device)
     tl_loss = nn.BCEWithLogitsLoss(pos_weight=tl_loss_weights)
-    pd_loss_weights = torch.tensor([0.2, 0.8]).to(device)
+    pd_loss_weights = torch.tensor([0.8, 0.2]).to(device)
     pd_loss = nn.BCEWithLogitsLoss(pos_weight=pd_loss_weights)
     va_loss = nn.MSELoss()
 
