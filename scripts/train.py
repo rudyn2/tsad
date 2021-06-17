@@ -3,6 +3,7 @@ import time
 import torch
 import wandb
 from torch.utils.data import DataLoader, random_split
+from sklearn.metrics import recall_score, accuracy_score
 
 
 def train_for_classification(net, dataset, optimizer,
@@ -32,9 +33,9 @@ def train_for_classification(net, dataset, optimizer,
         net.train()
 
         # Variables para las métricas
-        running_tl_acc, running_seg_acc, running_pd_acc = 0.0, 0.0, 0.0
+        running_tl_acc, running_seg_acc, running_pd_acc, running_pd_recall, running_tl_recall = 0.0, 0.0, 0.0, 0.0, 0.0
         running_seg_loss, running_tl_loss, running_va_loss, running_pd_loss, running_loss = 0.0, 0.0, 0.0, 0.0, 0.0
-        avg_tl_acc, avg_seg_acc, avg_va_loss, avg_loss, avg_tl_loss, avg_pd_acc, avg_pd_loss, avg_seg_loss = 0, 0, 0, 0, 0, 0, 0, 0
+        avg_tl_acc, avg_seg_acc, avg_va_loss, avg_loss, avg_tl_loss, avg_pd_acc, avg_pd_loss, avg_seg_loss, avg_pd_recall, avg_tl_recall = 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
 
         for i, (x, s, tl, v_aff, pds) in enumerate(train_loader):
 
@@ -72,8 +73,11 @@ def train_for_classification(net, dataset, optimizer,
             avg_pd_loss = running_pd_loss / (i + 1)
 
             # accuracy of traffic lights
-            _, max_idx = torch.max(y['traffic_light_status'], dim=1)
-            running_tl_acc += torch.sum(max_idx == torch.argmax(tl, dim=1)).item()
+            tl_pred = y['traffic_light_status'].argmax(dim=1).detach().cpu().numpy()
+            tl_expected = tl.argmax(dim=1).detach().cpu().numpy()
+            running_tl_acc += accuracy_score(tl_expected, tl_pred)
+            running_tl_recall += recall_score(tl_expected, tl_pred, pos_label=1, zero_division=0)
+            avg_tl_recall = running_tl_recall / items * 100
             avg_tl_acc = running_tl_acc / items * 100
 
             # accuracy semantic
@@ -82,9 +86,15 @@ def train_for_classification(net, dataset, optimizer,
             avg_seg_acc = running_seg_acc / items * 100
 
             # accuracy of pedestrians
-            _, max_idx = torch.max(y['pedestrian'], dim=1)
-            running_pd_acc += torch.sum(max_idx == torch.argmax(tl, dim=1)).item()
+            ped_pred = y['pedestrian'].argmax(dim=1).detach().cpu().numpy()
+            ped_expected = pds.argmax(dim=1).detach().cpu().numpy()
+            running_pd_recall += recall_score(ped_expected, ped_pred, pos_label=0, zero_division=0)
+            running_pd_acc += accuracy_score(ped_expected, ped_pred)
+
+            # _, max_idx = torch.max(y['pedestrian'], dim=1)
+            # running_pd_acc += torch.sum(max_idx == torch.argmax(pds, dim=1)).item()
             avg_pd_acc = running_pd_acc / items * 100
+            avg_pd_recall = running_pd_recall / items * 100
 
             # report
             sys.stdout.write(f'\rEpoch:{e}({items}/{n_train}), '
@@ -92,13 +102,17 @@ def train_for_classification(net, dataset, optimizer,
                              + f'Train[Loss:{avg_loss:02.5f}, '
                              + f'SEG Acc:{avg_seg_acc:02.1f}%, '
                              + f'TL Acc:{avg_tl_acc:02.1f}%, '
+                             + f'TL Recall:{avg_tl_recall:02.2f}%, '
                              + f'VA Loss: {avg_va_loss:02.5f}, '
-                             + f'PED Acc: {avg_pd_acc:02.1f}%')
+                             + f'PED Acc: {avg_pd_acc:02.1f}%, '
+                             + f'PED Recall:{avg_pd_recall:02.2f}%, ')
+
             if use_wandb:
                 wandb.log({'train/loss': float(avg_loss), 'train/acc TL': float(avg_tl_acc),
                            'train/acc PED': float(avg_pd_acc), 'train/loss PED': float(avg_pd_loss),
                            'train/loss SEG': float(avg_seg_loss), 'train/loss TL': float(avg_tl_loss),
-                           'train/acc SEG': float(avg_seg_acc), 'train/loss VA': float(avg_va_loss)}, step=global_step)
+                           'train/acc SEG': float(avg_seg_acc), 'train/loss VA': float(avg_va_loss),
+                           'train/recall PED': float(avg_pd_recall)}, step=global_step)
             global_step += 1
 
         tiempo_epochs += time.time() - inicio_epoch
@@ -112,6 +126,8 @@ def train_for_classification(net, dataset, optimizer,
                  'train/loss SEG': float(avg_seg_loss),
                  'train/acc PED': float(avg_pd_acc),
                  'train/loss PED': float(avg_pd_loss),
+                 'train/recall PED': float(avg_pd_recall),
+                 'train/recall TL': float(avg_tl_recall),
                  'epoch': e})
 
         if e % reports_every == 0:
@@ -120,7 +136,7 @@ def train_for_classification(net, dataset, optimizer,
             train_loss.append(avg_loss)
             train_acc.append([avg_tl_acc, avg_seg_acc, avg_va_loss, avg_pd_acc])
 
-            avg_tl_acc, avg_seg_acc, avg_loss, avg_seg_loss, avg_tl_loss, avg_va_loss, avg_pd_acc, avg_pd_loss = eval_net(
+            avg_tl_acc, avg_seg_acc, avg_loss, avg_seg_loss, avg_tl_loss, avg_va_loss, avg_pd_acc, avg_pd_loss,  avg_pd_recall, avg_tl_recall= eval_net(
                 device,
                 net,
                 seg_criterion,
@@ -133,20 +149,24 @@ def train_for_classification(net, dataset, optimizer,
             test_loss.append([avg_tl_acc, avg_seg_acc, avg_va_loss, avg_pd_acc])
             sys.stdout.write(f', Val[Loss:{avg_loss:02.4f}, '
                              + f'TL Acc:{avg_tl_acc:02.2f}%, '
+                             + f'TL Recall:{avg_tl_recall:02.2f}%, '
                              + f'SEG Acc:{avg_seg_acc:02.2f}%, '
                              + f'VA Loss:{avg_va_loss:02.5f}%, '
                              + f'PED Acc:{avg_pd_acc:02.2f}%, '
+                             + f'PED Recall:{avg_pd_recall:02.2f}%, '
                              + f'Avg-Time:{tiempo_epochs / e:.3f}s.\n')
             if use_wandb:
                 wandb.log({'val/acc TL': float(avg_tl_acc), 'val/acc SEG': float(avg_seg_acc),
                            'val/loss VA': float(avg_va_loss), 'val/loss': float(avg_loss),
                            'val/acc PED': float(avg_pd_acc), 'val/loss PED': float(avg_pd_loss),
-                           'val/loss TL': float(avg_tl_loss), 'val/loss SEG': float(avg_seg_loss)},
+                           'val/loss TL': float(avg_tl_loss), 'val/loss SEG': float(avg_seg_loss),
+                           'val/recall PED': float(avg_pd_recall), 'val/recall TL': float(avg_tl_recall)},
                           step=global_step)
                 wandb.log({'val/acc TL': float(avg_tl_acc), 'val/acc SEG': float(avg_seg_acc),
                            'val/loss VA': float(avg_va_loss), 'val/loss': float(avg_loss),
                            'val/acc PED': float(avg_pd_acc), 'val/loss PED': float(avg_pd_loss),
-                           'val/loss TL': float(avg_tl_loss), 'val/loss SEG': float(avg_seg_loss), 'epoch': e})
+                           'val/loss TL': float(avg_tl_loss), 'val/loss SEG': float(avg_seg_loss),
+                           'val/recall PED': float(avg_pd_recall), 'val/recall TL': float(avg_tl_recall), 'epoch': e})
 
             # checkpointing
             if avg_loss <= best_loss:
@@ -169,7 +189,7 @@ def train_for_classification(net, dataset, optimizer,
 def eval_net(device, net, seg_criterion, tl_criterion, val_criterion, pd_criterion, test_loader,
              criterion_weights: tuple = (1, 1, 1)):
     net.eval()
-    running_tl_acc, running_seg_acc, running_pd_acc, running_va_loss, running_loss = 0.0, 0.0, 0.0, 0.0, 0.0
+    running_tl_acc, running_seg_acc, running_pd_acc, running_pd_recall, running_tl_recall, running_va_loss, running_loss = 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0
     running_seg_loss, running_tl_loss, running_pd_loss = 0.0, 0.0, 0.0
     total_test = 0
     avg_loss, avg_seg_loss, avg_tl_loss, avg_va_loss, avg_pd_loss = 0, 0, 0, 0, 0
@@ -200,23 +220,34 @@ def eval_net(device, net, seg_criterion, tl_criterion, val_criterion, pd_criteri
         avg_va_loss = running_va_loss / (i + 1)
         avg_pd_loss = running_pd_loss / (i + 1)
 
-        # accuracy of traffic lights
-        _, max_idx = torch.max(y['traffic_light_status'], dim=1)
-        running_tl_acc += torch.sum(max_idx == torch.argmax(tl, dim=1)).item()
         # accuracy semantic
         _, max_idx = torch.max(y['segmentation'], dim=1)
         running_seg_acc += torch.sum(max_idx == s).item() / max_idx.numel()
+
+        # accuracy of traffic lights
+        tl_pred = y['traffic_light_status'].argmax(dim=1).detach().cpu().numpy()
+        tl_expected = tl.argmax(dim=1).detach().cpu().numpy()
+        running_tl_acc += accuracy_score(tl_expected, tl_pred)
+        running_tl_recall += recall_score(tl_expected, tl_pred, pos_label=1, zero_division=0)
+
         # accuracy of pedestrians
         _, max_idx = torch.max(y['pedestrian'], dim=1)
         running_pd_acc += torch.sum(max_idx == torch.argmax(tl, dim=1)).item()
+        # accuracy of pedestrians
+        ped_pred = y['pedestrian'].argmax(dim=1).detach().cpu().numpy()
+        ped_expected = pds.argmax(dim=1).detach().cpu().numpy()
+        running_pd_recall += recall_score(ped_expected, ped_pred, pos_label=0, zero_division=0)
+        running_pd_acc += accuracy_score(ped_expected, ped_pred)
 
         total_test += x.shape[0]
 
     avg_tl_acc = (running_tl_acc / total_test) * 100
     avg_seg_acc = (running_seg_acc / total_test) * 100
     avg_pd_acc = (running_pd_acc / total_test) * 100
+    avg_pd_recall = (running_pd_recall / total_test) * 100
+    avg_tl_recall = (running_tl_recall / total_test) * 100
 
-    return avg_tl_acc, avg_seg_acc, avg_loss, avg_seg_loss, avg_tl_loss, avg_va_loss, avg_pd_acc, avg_pd_loss
+    return avg_tl_acc, avg_seg_acc, avg_loss, avg_seg_loss, avg_tl_loss, avg_va_loss, avg_pd_acc, avg_pd_loss, avg_pd_recall, avg_tl_recall
 
 
 if __name__ == "__main__":

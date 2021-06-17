@@ -115,7 +115,7 @@ if __name__ == '__main__':
 
     # create model
     model = ADEncoder(backbone=args.backbone)
-    # model.load_state_dict(torch.load(args.weights))
+    model.load_state_dict(torch.load(args.weights))
     model.to(args.device)
     model.eval()
 
