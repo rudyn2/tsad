@@ -1,9 +1,12 @@
 from ignite.engine import Events, create_supervised_trainer, create_supervised_evaluator
-from ignite.metrics import Accuracy, Loss, RunningAverage
+from ignite.metrics import Accuracy, Loss, RunningAverage, RootMeanSquaredError, DiceCoefficient, ConfusionMatrix, \
+    MetricsLambda, IoU
 from termcolor import colored
 from tqdm import tqdm
+from ignite.utils import to_onehot
 from torch.utils.data import random_split, DataLoader
 from ignite.contrib.handlers.wandb_logger import WandBLogger
+from custom_metrics import Recall
 
 
 def prepare_batch(batch, device, non_blocking):
@@ -14,25 +17,40 @@ def prepare_batch(batch, device, non_blocking):
     return x, y_expected
 
 
-def trainer_output_transform(x, y, y_pred, loss):
-    return {
-        'y': y,
-        'y_pred': y_pred,
-        'loss': loss
-    }
-
-
 def output_transform_tl(process_output):
     """
     Output transform for traffic light status metrics.
     """
     y_pred = process_output[0]['traffic_light_status'].argmax(dim=1)
     y = process_output[1]['traffic_light_status'].argmax(dim=1)
-    return y_pred, y   # output format is according to `Accuracy` docs
+    return dict(y_pred=y_pred, y=y)  # output format is according to `Accuracy` docs
 
 
-def wandb_iteration_completed_transform(output):
-    return output
+def output_transform_ped(process_output):
+    """
+    Output transform for pedestrian presence metrics.
+    """
+    y_pred = process_output[0]['pedestrian'].argmax(dim=1)
+    y = process_output[1]['pedestrian'].argmax(dim=1)
+    return dict(y_pred=y_pred, y=y)  # output format is according to `Accuracy` docs
+
+
+def output_transform_va(process_output):
+    """
+    Output transform for pedestrian presence metrics.
+    """
+    y_pred = process_output[0]['vehicle_affordances'].argmax(dim=1)
+    y = process_output[1]['vehicle_affordances'].argmax(dim=1)
+    return dict(y_pred=y_pred, y=y)  # output format is according to `MeanSquareError` docs
+
+
+def output_transform_seg(process_output):
+    y_pred = process_output[0]['segmentation'].argmax(dim=1)  # (B, W, H)
+    y = process_output[1]['segmentation']  # (B, W, H)
+    y_pred_ = y_pred.view(-1)  # B, (W*H)
+    y_ = y.view(-1)
+    y_pred_one_hot = to_onehot(y_pred_, num_classes=6)
+    return dict(y_pred=y_pred_one_hot, y=y_)  # output format is according to `DiceCoefficient` docs
 
 
 def run(args):
@@ -61,58 +79,72 @@ def run(args):
                   pd_weights=args.pd_weights)
     print(colored("[+] Model, optimizer and loss are ready!", "green"))
 
+    avg_fn = lambda x: torch.mean(x).item()
+    cm_metric = ConfusionMatrix(num_classes=6, output_transform=output_transform_seg)
     metrics = {
-        'accuracy': Accuracy(output_transform=output_transform_tl)
+        'tl_accuracy': Accuracy(output_transform=output_transform_tl),
+        'tl_recall': Recall(output_transform=output_transform_tl),
+        'tl_accuracy_avg': RunningAverage(Accuracy(output_transform=output_transform_tl)),
+        'tl_recall_avg': RunningAverage(Recall(output_transform=output_transform_tl)),
+        'pd_accuracy': Accuracy(output_transform=output_transform_ped),
+        'pd_recall': Recall(output_transform=output_transform_ped),
+        'pd_accuracy_avg': RunningAverage(Accuracy(output_transform=output_transform_ped)),
+        'pd_recall_avg': RunningAverage(Recall(output_transform=output_transform_ped)),
+        'va_rmse': RootMeanSquaredError(output_transform=output_transform_va),
+        'va_rmse_avg': RunningAverage(RootMeanSquaredError(output_transform=output_transform_va)),
+        'seg_dice': MetricsLambda(avg_fn, DiceCoefficient(cm_metric, ignore_index=5)),
+        # 'seg_dice_avg': RunningAverage(MetricsLambda(avg_fn, DiceCoefficient(cm_metric, ignore_index=5))),
+        'seg_iou': MetricsLambda(avg_fn, IoU(cm_metric, ignore_index=5)),
+        # 'seg_iou_avg': RunningAverage(MetricsLambda(avg_fn, IoU(cm_metric, ignore_index=5)))
     }
     trainer = create_supervised_trainer(model,
                                         optimizer,
                                         loss,
                                         prepare_batch=prepare_batch,
+                                        output_transform=lambda x, y, y_pred, loss: (y_pred, y, loss),
                                         device=device)
 
     train_evaluator = create_supervised_evaluator(model, metrics=metrics, device=device, prepare_batch=prepare_batch)
-    val_evaluator = create_supervised_evaluator(model, metrics=metrics, device=device, prepare_batch=prepare_batch)  # TODO: include required metrics
+    val_evaluator = create_supervised_evaluator(model, metrics=metrics, device=device, prepare_batch=prepare_batch)
 
-    desc = "ITERATION - loss: {:.2f}"
+    # add metrics to trainer engine
+    for label, metric in metrics.items():
+        metric.attach(trainer, label, "batch_wise")
+
+    desc = "ITERATION - loss: {:.2f} - tl acc: {:.2f} - tl recall: {:.2f} "
     pbar = tqdm(
         initial=0, leave=False, total=len(train_loader),
-        desc=desc.format(0)
+        desc=desc.format(0, 0, 0)
     )
 
     @trainer.on(Events.ITERATION_COMPLETED(every=log_interval))
     def log_training_loss(engine):
-        pbar.desc = desc.format(engine.state.output)
+        iteration_metrics = engine.state.metrics
+        iteration_loss = engine.state.output[2]  # accordingly to trainer's output transform
+        pbar.desc = desc.format(iteration_loss,
+                                iteration_metrics['tl_accuracy'],
+                                iteration_metrics['tl_recall'])
         pbar.update(log_interval)
-        # wandb.log({"train loss": engine.state.output})
 
     @trainer.on(Events.EPOCH_COMPLETED)
     def log_training_results(engine):
         pbar.refresh()
         train_evaluator.run(train_loader)
         metrics = train_evaluator.state.metrics
-        # TODO: Put here the desired metrics
-        avg_accuracy = metrics['accuracy']
-        tqdm.write(
-            "Training Results - Epoch: {}  Avg accuracy: {:.2f}"
-                .format(engine.state.epoch, avg_accuracy)
-        )
+        tqdm.write(f"Training Results - Epoch: {engine.state.epoch} - "
+                   f"Avg TL accuracy: {metrics['tl_accuracy_avg']:.2f} - "
+                   f"Avg Dice: {metrics['seg_dice']}")
 
     @trainer.on(Events.EPOCH_COMPLETED)
     def log_validation_results(engine):
         val_evaluator.run(val_loader)
         metrics = val_evaluator.state.metrics
-        avg_accuracy = metrics['accuracy']
-        tqdm.write(
-            "Validation Results - Epoch: {}  Avg accuracy: {:.2f} "
-                .format(engine.state.epoch, avg_accuracy))
+        tqdm.write(f"Validation Results - Epoch: {engine.state.epoch} - "
+                   f"Avg TL accuracy: {metrics['tl_accuracy_avg']:.2f} - "
+                   f"Avg Dice: {metrics['seg_dice']}")
 
         pbar.n = pbar.last_print_n = 0
-        # wandb.log({"validation loss": avg_nll})
-        # wandb.log({"validation accuracy": avg_accuracy})
 
-    '''
-    Wandb Object Creation
-    '''
     wandb_logger = WandBLogger(
         project="tsad",
         name="ad-encoder",
@@ -120,25 +152,20 @@ def run(args):
         tags=["pytorch-ignite", "ad-encoder"]
     )
 
-    '''
-    Attach the Object to the output handlers:
-    1) Log training loss - attach to trainer
-    2) Log validation loss - attach to evaluator
-    3) Log optional Parameters
-    4) Watch the model
-    '''
     wandb_logger.attach_output_handler(
         trainer,
         event_name=Events.ITERATION_COMPLETED,
         tag="training",
-        output_transform=lambda loss: {"loss": loss}
+        metric_names="all",
+        output_transform=lambda loss: {"loss": loss[2]},
+        global_step_transform=lambda *_: trainer.state.iteration,
     )
 
     wandb_logger.attach_output_handler(
         train_evaluator,
         event_name=Events.EPOCH_COMPLETED,
         tag="training",
-        metric_names=["accuracy"],
+        metric_names="all",
         global_step_transform=lambda *_: trainer.state.iteration,
     )
 
