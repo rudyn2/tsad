@@ -37,7 +37,7 @@ def output_transform_ped(process_output):
 
 def output_transform_va(process_output):
     """
-    Output transform for pedestrian presence metrics.
+    Output transform for vehicle affordances metrics.
     """
     y_pred = process_output[0]['vehicle_affordances'].argmax(dim=1)
     y = process_output[1]['vehicle_affordances'].argmax(dim=1)
@@ -45,6 +45,10 @@ def output_transform_va(process_output):
 
 
 def output_transform_seg(process_output):
+    """
+    Output transform for segmentation metrics.
+    """
+
     y_pred = process_output[0]['segmentation'].argmax(dim=1)  # (B, W, H)
     y = process_output[1]['segmentation']  # (B, W, H)
     y_pred_ = y_pred.view(-1)  # B, (W*H)
@@ -206,7 +210,8 @@ if __name__ == '__main__':
                         help='Loss weights [segmentation, traffic light status, vehicle affordances ]')
     parser.add_argument('--tl-weights', default="0.2, 0.8", type=str,
                         help='Traffic light weights [Green, Red]')
-    parser.add_argument('--pd-weights', default="0.8, 0.2")
+    parser.add_argument('--pd-weights', default="0.2, 0.8", type=str,
+                        help="Pedestrian loss weights [no pedestrian, pedestrian]")
 
     parser.add_argument('--epochs', default=20, type=int, help='Number of epochs.')
     parser.add_argument('--lr', default=0.0001, type=float, help='Learning rate.')
