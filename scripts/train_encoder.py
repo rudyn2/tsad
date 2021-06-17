@@ -5,8 +5,9 @@ from termcolor import colored
 from tqdm import tqdm
 from ignite.utils import to_onehot
 from torch.utils.data import random_split, DataLoader
-from ignite.contrib.handlers.wandb_logger import WandBLogger
+from ignite.contrib.handlers.wandb_logger import WandBLogger, global_step_from_engine
 from custom_metrics import Recall
+from ignite.handlers import EarlyStopping, ModelCheckpoint
 
 
 def prepare_batch(batch, device, non_blocking):
@@ -86,6 +87,8 @@ def run(args):
     avg_fn = lambda x: torch.mean(x).item()
     cm_metric = ConfusionMatrix(num_classes=6, output_transform=output_transform_seg)
     metrics = {
+        'loss': Loss(loss_fn=loss, output_transform=lambda x: (x[0], x[1])),
+        'loss_avg': RunningAverage(Loss(loss_fn=loss, output_transform=lambda x: (x[0], x[1]))),
         'tl_accuracy': Accuracy(output_transform=output_transform_tl),
         'tl_recall': Recall(output_transform=output_transform_tl),
         'tl_accuracy_avg': RunningAverage(Accuracy(output_transform=output_transform_tl)),
@@ -114,6 +117,12 @@ def run(args):
     # add metrics to trainer engine
     for label, metric in metrics.items():
         metric.attach(trainer, label, "batch_wise")
+
+    score_function = lambda engine: -engine.state.metrics['loss']
+    early_stopping_handler = EarlyStopping(patience=3,
+                                           score_function=score_function,
+                                           trainer=trainer)
+    val_evaluator.add_event_handler(Events.COMPLETED, early_stopping_handler)
 
     desc = "ITERATION - loss: {:.2f} - tl acc: {:.2f} - tl recall: {:.2f} "
     pbar = tqdm(
@@ -155,6 +164,14 @@ def run(args):
         config={"max_epochs": args.epochs, "batch_size": args.batch_size},
         tags=["pytorch-ignite", "ad-encoder"]
     )
+
+    model_checkpoint = ModelCheckpoint(
+        wandb_logger.run.dir, n_saved=2, filename_prefix='best',
+        require_empty=False, score_function=score_function,
+        score_name="validation_accuracy",
+        global_step_transform=global_step_from_engine(trainer)
+    )
+    val_evaluator.add_event_handler(Events.COMPLETED, model_checkpoint,  {'model': model})
 
     wandb_logger.attach_output_handler(
         trainer,
