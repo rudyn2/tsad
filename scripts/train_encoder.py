@@ -160,6 +160,7 @@ def run(args):
 
     wandb_logger = WandBLogger(
         project="tsad",
+        entity="autonomous-driving",
         name="ad-encoder",
         config={"max_epochs": args.epochs, "batch_size": args.batch_size},
         tags=["pytorch-ignite", "ad-encoder"]
@@ -190,11 +191,12 @@ def run(args):
         global_step_transform=lambda *_: trainer.state.iteration,
     )
 
-    wandb_logger.attach_opt_params_handler(
-        trainer,
-        event_name=Events.ITERATION_STARTED,
-        optimizer=optimizer,
-        param_name='lr'  # optional
+    wandb_logger.attach_output_handler(
+        val_evaluator,
+        event_name=Events.EPOCH_COMPLETED,
+        tag="validation",
+        metric_names="all",
+        global_step_transform=lambda *_: trainer.state.iteration,
     )
 
     wandb_logger.watch(model)

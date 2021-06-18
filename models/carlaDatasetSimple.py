@@ -129,7 +129,7 @@ class CarlaDatasetSimple(Dataset):
         tl = torch.tensor([1, 0] if data['tl_state'] == 'Green' else [0, 1], dtype=torch.float16)
         v_aff = torch.tensor([data['lane_distance'], data['lane_orientation']]).float()
         sum_pds = (s == 6).sum()
-        pds = torch.tensor([0, 1] if sum_pds > 0 else [1, 0]).float()
+        pds = torch.tensor([0, 1] if sum_pds > 100 else [1, 0]).float()
 
         return x, s, tl, v_aff, pds
 
@@ -143,6 +143,6 @@ class CarlaDatasetSimple(Dataset):
 
 
 if __name__ == '__main__':
-    d = CarlaDatasetSimple('./dataset')
+    d = CarlaDatasetSimple('../dataset')
     print(d.get_random_full_episode())
 
