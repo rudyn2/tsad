@@ -12,7 +12,7 @@ from ignite.handlers import EarlyStopping, ModelCheckpoint
 
 def prepare_batch(batch, device, non_blocking):
     y_expected = {}
-    for t, label in zip(batch[1:], ["segmentation", "traffic_light_status", "vehicle_affordances", "pedestrian"]):
+    for t, label in zip(batch[1:], ["segmentation", "traffic_light_status", "vehicle_affordances"]):
         y_expected[label] = t.to(device=device, non_blocking=non_blocking)
     x = batch[0].to(device=device, non_blocking=non_blocking)
     return x, y_expected
@@ -24,15 +24,6 @@ def output_transform_tl(process_output):
     """
     y_pred = process_output[0]['traffic_light_status'].argmax(dim=1)
     y = process_output[1]['traffic_light_status'].argmax(dim=1)
-    return dict(y_pred=y_pred, y=y)  # output format is according to `Accuracy` docs
-
-
-def output_transform_ped(process_output):
-    """
-    Output transform for pedestrian presence metrics.
-    """
-    y_pred = process_output[0]['pedestrian'].argmax(dim=1)
-    y = process_output[1]['pedestrian'].argmax(dim=1)
     return dict(y_pred=y_pred, y=y)  # output format is according to `Accuracy` docs
 
 
@@ -80,8 +71,7 @@ def run(args):
     model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     loss = ADLoss(loss_weights=args.loss_weights,
-                  tl_weights=args.tl_weights,
-                  pd_weights=args.pd_weights)
+                  tl_weights=args.tl_weights)
     print(colored("[+] Model, optimizer and loss are ready!", "green"))
 
     avg_fn = lambda x: torch.mean(x).item()
@@ -93,10 +83,6 @@ def run(args):
         'tl_recall': Recall(output_transform=output_transform_tl),
         'tl_accuracy_avg': RunningAverage(Accuracy(output_transform=output_transform_tl)),
         'tl_recall_avg': RunningAverage(Recall(output_transform=output_transform_tl)),
-        'pd_accuracy': Accuracy(output_transform=output_transform_ped),
-        'pd_recall': Recall(output_transform=output_transform_ped),
-        'pd_accuracy_avg': RunningAverage(Accuracy(output_transform=output_transform_ped)),
-        'pd_recall_avg': RunningAverage(Recall(output_transform=output_transform_ped)),
         'va_rmse': RootMeanSquaredError(output_transform=output_transform_va),
         'va_rmse_avg': RunningAverage(RootMeanSquaredError(output_transform=output_transform_va)),
         'seg_dice': MetricsLambda(avg_fn, DiceCoefficient(cm_metric, ignore_index=5)),
@@ -146,7 +132,7 @@ def run(args):
         metrics = train_evaluator.state.metrics
         tqdm.write(f"Training Results - Epoch: {engine.state.epoch} - "
                    f"Avg TL accuracy: {metrics['tl_accuracy_avg']:.2f} - "
-                   f"Avg Dice: {metrics['seg_dice']}")
+                   f"Avg Seg Dice: {metrics['seg_dice']}")
 
     @trainer.on(Events.EPOCH_COMPLETED)
     def log_validation_results(engine):
@@ -154,13 +140,13 @@ def run(args):
         metrics = val_evaluator.state.metrics
         tqdm.write(f"Validation Results - Epoch: {engine.state.epoch} - "
                    f"Avg TL accuracy: {metrics['tl_accuracy_avg']:.2f} - "
-                   f"Avg Dice: {metrics['seg_dice']}")
+                   f"Avg Seg Dice: {metrics['seg_dice']}")
 
         pbar.n = pbar.last_print_n = 0
 
     wandb_logger = WandBLogger(
         project="tsad",
-        entity="autonomous-driving",
+        # entity="autonomous-driving",
         name="ad-encoder",
         config={"max_epochs": args.epochs, "batch_size": args.batch_size},
         tags=["pytorch-ignite", "ad-encoder"]
@@ -168,12 +154,13 @@ def run(args):
 
     model_checkpoint = ModelCheckpoint(
         wandb_logger.run.dir, n_saved=2, filename_prefix='best',
-        require_empty=False, score_function=score_function,
+        require_empty=False, score_function=score_function, create_dir=True,
         score_name="validation_accuracy",
         global_step_transform=global_step_from_engine(trainer)
     )
     val_evaluator.add_event_handler(Events.COMPLETED, model_checkpoint,  {'model': model})
 
+    # training logs per iteration
     wandb_logger.attach_output_handler(
         trainer,
         event_name=Events.ITERATION_COMPLETED,
@@ -183,10 +170,11 @@ def run(args):
         global_step_transform=lambda *_: trainer.state.iteration,
     )
 
+    # training logs per epoch
     wandb_logger.attach_output_handler(
         train_evaluator,
         event_name=Events.EPOCH_COMPLETED,
-        tag="training",
+        tag="training_epoch",
         metric_names="all",
         global_step_transform=lambda *_: trainer.state.iteration,
     )
@@ -194,7 +182,7 @@ def run(args):
     wandb_logger.attach_output_handler(
         val_evaluator,
         event_name=Events.EPOCH_COMPLETED,
-        tag="validation",
+        tag="validation_epoch",
         metric_names="all",
         global_step_transform=lambda *_: trainer.state.iteration,
     )
@@ -229,16 +217,13 @@ if __name__ == '__main__':
                         help='Loss weights [segmentation, traffic light status, vehicle affordances ]')
     parser.add_argument('--tl-weights', default="0.2, 0.8", type=str,
                         help='Traffic light weights [Green, Red]')
-    parser.add_argument('--pd-weights', default="0.2, 0.8", type=str,
-                        help="Pedestrian loss weights [no pedestrian, pedestrian]")
 
-    parser.add_argument('--epochs', default=20, type=int, help='Number of epochs.')
+    parser.add_argument('--epochs', default=2, type=int, help='Number of epochs.')
     parser.add_argument('--lr', default=0.0001, type=float, help='Learning rate.')
     args = parser.parse_args()
 
     weights_to_tuple = lambda x: tuple([float(s) for s in str(x).split(",")])
     args.loss_weights = weights_to_tuple(args.loss_weights)
     args.tl_weights = weights_to_tuple(args.tl_weights)
-    args.pd_weights = weights_to_tuple(args.pd_weights)
 
     run(args)

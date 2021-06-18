@@ -62,7 +62,7 @@ class CarlaDatasetSimple(Dataset):
                 for timestamp in f[run].keys():
                     self.run_timestamp_mapping[timestamp] = run
         self.timestamps = list(self.run_timestamp_mapping.keys())
-        # self.timestamps = self.timestamps[:128]     # REMOVE THIS
+        self.timestamps = self.timestamps[:128]     # REMOVE THIS
         return hdf5_path
 
     def read_metadata(self):
@@ -87,15 +87,14 @@ class CarlaDatasetSimple(Dataset):
         run_id = random.choice(list(self.metadata.keys()))
         timestamps = self.metadata[run_id].keys()
         idxs = [self.timestamps.index(t) for t in timestamps]
-        camera, segmentation, traffic_light, vehicle_affordances, pedestrian = [], [], [], [], []
+        camera, segmentation, traffic_light, vehicle_affordances = [], [], [], []
         for idx in sorted(idxs):
             x, s, tl, v_aff, pds = self[idx]
             camera.append(x)
             segmentation.append(s)
             traffic_light.append(tl)
             vehicle_affordances.append(v_aff)
-            pedestrian.append(pds)
-        return camera, segmentation, traffic_light, vehicle_affordances, pedestrian
+        return camera, segmentation, traffic_light, vehicle_affordances
 
     def __getitem__(self, item):
         element = self.timestamps[item]
@@ -128,10 +127,7 @@ class CarlaDatasetSimple(Dataset):
 
         tl = torch.tensor([1, 0] if data['tl_state'] == 'Green' else [0, 1], dtype=torch.float16)
         v_aff = torch.tensor([data['lane_distance'], data['lane_orientation']]).float()
-        sum_pds = (s == 6).sum()
-        pds = torch.tensor([0, 1] if sum_pds > 100 else [1, 0]).float()
-
-        return x, s, tl, v_aff, pds
+        return x, s, tl, v_aff
 
     def _map_classes(self, semantic: torch.Tensor) -> torch.Tensor:
         for k, v in self.CLASS_MAPPING.items():
