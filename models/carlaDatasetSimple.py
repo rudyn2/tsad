@@ -62,7 +62,7 @@ class CarlaDatasetSimple(Dataset):
                 for timestamp in f[run].keys():
                     self.run_timestamp_mapping[timestamp] = run
         self.timestamps = list(self.run_timestamp_mapping.keys())
-        self.timestamps = self.timestamps[:128]     # REMOVE THIS
+        # self.timestamps = self.timestamps[:128]     # REMOVE THIS
         return hdf5_path
 
     def read_metadata(self):
