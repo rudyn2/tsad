@@ -128,13 +128,10 @@ class UpConvBlock(nn.Module):
     """
     x2 space resolution
     """
-    def __init__(self, in_channels: int, out_channels: int, use_bn: bool = False, **kwargs):
+    def __init__(self, in_channels: int, out_channels: int, **kwargs):
         super(UpConvBlock, self).__init__()
         self.up_conv = nn.ConvTranspose2d(in_channels, out_channels, kernel_size=(3, 3), stride=(2, 2), **kwargs)
         self.double_conv = DoubleConv(out_channels, out_channels)
-        self.use_bn = use_bn
-        # if use_bn:
-        #   self.bn1 = nn.BatchNorm2d(out_channels)
 
     def forward(self, x):
         x = self.up_conv(x)
@@ -142,18 +139,32 @@ class UpConvBlock(nn.Module):
         return x
 
 
+class OutputConv(nn.Module):
+
+    def __init__(self, in_channels: int, out_channels: int, mid_channels: int):
+        super(OutputConv, self).__init__()
+        self.double_conv = DoubleConv(in_channels, out_channels, mid_channels)
+        self.last_layer = nn.Conv2d(out_channels, out_channels, kernel_size=(1, 1))
+
+    def forward(self, x):
+        x = self.double_conv(x)
+        x = self.last_layer(x)
+        return x
+
+
 class ImageSegmentationBranch(nn.Module):
 
-    def __init__(self, in_channels: int, output_channels: int, use_bn: bool = False):
+    def __init__(self, in_channels: int, output_channels: int):
         super(ImageSegmentationBranch, self).__init__()
         self.in_channels = in_channels
         self.up1 = UpConvBlock(in_channels, in_channels // 2)
-        self.up2 = UpConvBlock(in_channels // 2, in_channels // 4, use_bn, padding=(1, 1), output_padding=(1, 1))
-        self.up3 = UpConvBlock(in_channels // 4, in_channels // 8, use_bn, padding=(1, 1), output_padding=(1, 1))
-        self.up4 = UpConvBlock(in_channels // 8, in_channels // 16, use_bn, padding=(1, 1), output_padding=(1, 1))
-        self.up5 = UpConvBlock(in_channels // 16, in_channels // 32, use_bn, padding=(1, 1), output_padding=(1, 1))
-        self.up6 = UpConvBlock(in_channels // 32, in_channels // 64, use_bn, padding=(1, 1), output_padding=(1, 1))
-        self.output_conv = nn.Conv2d(in_channels // 64, output_channels, kernel_size=(1, 1))
+        self.up2 = UpConvBlock(in_channels // 2, in_channels // 4, padding=(1, 1), output_padding=(1, 1))
+        self.up3 = UpConvBlock(in_channels // 4, in_channels // 8, padding=(1, 1), output_padding=(1, 1))
+        self.up4 = UpConvBlock(in_channels // 8, in_channels // 16, padding=(1, 1), output_padding=(1, 1))
+        self.up5 = UpConvBlock(in_channels // 16, in_channels // 32, padding=(1, 1), output_padding=(1, 1))
+        self.up6 = UpConvBlock(in_channels // 32, in_channels // 64, padding=(1, 1), output_padding=(1, 1))
+        # self.output_conv = nn.Conv2d(in_channels // 64, output_channels, kernel_size=(1, 1))
+        self.output_conv = OutputConv(in_channels // 64, output_channels, mid_channels=in_channels // 128)
 
     def forward(self, x):
         x = self.up1(x)
@@ -264,7 +275,7 @@ class ADEncoder(nn.Module):
             self.backbone = ResNet(ResBlock, [3, 4, 6, 3], 4, 10)
         elif backbone.startswith("efficientnet"):
             self.backbone = EfficientNetBackbone(name=backbone)
-        self.seg = ImageSegmentationBranch(512, 6, use_bn)
+        self.seg = ImageSegmentationBranch(512, 6)
         self.traffic_light_classifier = TrafficLightClassifier()
         self.pedestrian_classifier = PedestrianClassifier()
         self.vehicle_position = VehicleAffordanceRegressor()

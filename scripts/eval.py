@@ -31,21 +31,23 @@ if __name__ == "__main__":
     if args.debug:
         episode = dataset.get_random_full_episode()
         print(f"Length episode: {len(episode[0])}")
-        for x, s, tl, v_aff in zip(*episode):
+        for x, s, tl, v_aff, ped in zip(*episode):
             x = x.unsqueeze(0).to(args.device)
             pred = model(x)
             pred_segmentation = pred['segmentation'].squeeze().argmax(0).cpu().detach().numpy()
             pred_traffic_light_status = pred['traffic_light_status'].argmax().item()
             pred_vehicle_affordances = pred['vehicle_affordances'].cpu().detach().numpy()
+            pred_pedestrian = pred['pedestrian'].cpu().detach().numpy()
 
             real_seg = s.squeeze().numpy()
             real_tl_status = 'Red' if tl.numpy().argmax() == 1 else 'Green'
             real_vh = v_aff.numpy()
 
             sys.stdout.write('\r')
-            log = f"TL: {'Red' if pred_traffic_light_status == 1 else 'Green'}, " \
+            log = f"TL: {'Red' if pred_traffic_light_status == 1 else 'Green'} | {real_tl_status}, " \
                   f"Vehicle position: {pred_vehicle_affordances[0][0]:.3f} | {real_vh[0]:.3f}, " \
-                  f"Vehicle orientation: {pred_vehicle_affordances[0][1]:.3f} |  {real_vh[1]:.3f}"
+                  f"Vehicle orientation: {pred_vehicle_affordances[0][1]:.3f} |  {real_vh[1]:.3f}, " \
+                  f"Pedestrian: {pred_pedestrian[0].argmax()}|{ped.argmax().item()}"
             sys.stdout.write(log)
             sys.stdout.flush()
 
