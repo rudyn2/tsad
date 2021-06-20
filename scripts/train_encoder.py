@@ -10,6 +10,8 @@ from custom_metrics import Recall
 from ignite.handlers import EarlyStopping, ModelCheckpoint
 
 
+NUM_CLASSES = 7
+
 def prepare_batch(batch, device, non_blocking):
     y_expected = {}
     for t, label in zip(batch[1:], ["segmentation", "traffic_light_status", "vehicle_affordances"]):
@@ -45,7 +47,7 @@ def output_transform_seg(process_output):
     y = process_output[1]['segmentation']  # (B, W, H)
     y_pred_ = y_pred.view(-1)  # B, (W*H)
     y_ = y.view(-1)
-    y_pred_one_hot = to_onehot(y_pred_, num_classes=6)
+    y_pred_one_hot = to_onehot(y_pred_, num_classes=NUM_CLASSES)
     return dict(y_pred=y_pred_one_hot, y=y_)  # output format is according to `DiceCoefficient` docs
 
 
@@ -76,7 +78,7 @@ def run(args):
     print(colored("[+] Model, optimizer and loss are ready!", "green"))
 
     avg_fn = lambda x: torch.mean(x).item()
-    cm_metric = ConfusionMatrix(num_classes=7, output_transform=output_transform_seg)
+    cm_metric = ConfusionMatrix(num_classes=NUM_CLASSES, output_transform=output_transform_seg)
     metrics = {
         'loss': Loss(loss_fn=loss, output_transform=lambda x: (x[0], x[1])),
         'loss_avg': RunningAverage(Loss(loss_fn=loss, output_transform=lambda x: (x[0], x[1]))),
@@ -113,7 +115,7 @@ def run(args):
         metric.attach(trainer, label, "batch_wise")
 
     score_function = lambda engine: -engine.state.metrics['loss']
-    early_stopping_handler = EarlyStopping(patience=3,
+    early_stopping_handler = EarlyStopping(patience=5,
                                            score_function=score_function,
                                            trainer=trainer)
     val_evaluator.add_event_handler(Events.COMPLETED, early_stopping_handler)
