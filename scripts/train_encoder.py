@@ -154,7 +154,7 @@ def run(args):
 
     wandb_logger = WandBLogger(
         project="tsad",
-        # entity="autonomous-driving",
+        entity="autonomous-driving",
         name="ad-encoder",
         config={"max_epochs": args.epochs, "batch_size": args.batch_size},
         tags=["pytorch-ignite", "ad-encoder"]
