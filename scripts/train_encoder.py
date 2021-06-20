@@ -72,7 +72,7 @@ def run(args):
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     loss = ADLoss(loss_weights=args.loss_weights,
                   tl_weights=args.tl_weights,
-                  seg_loss=args.loss)
+                  seg_loss=args.seg_loss)
     print(colored("[+] Model, optimizer and loss are ready!", "green"))
 
     avg_fn = lambda x: torch.mean(x).item()
