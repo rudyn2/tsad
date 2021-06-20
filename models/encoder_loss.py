@@ -27,15 +27,20 @@ class ADLoss(nn.Module):
         if seg_loss == 'dice':
             self._seg_loss = DiceLoss()
         elif seg_loss == 'wnll':
-            self._seg_loss = WeightedPixelWiseNLLoss(weights={
-                0: 0.3,
-                1: 0.1,
-                2: 0.15,
-                3: 0.1,
-                4: 0.1,
-                5: 0.05,
-                6: 0.5
-            })
+            weights = {
+                0: 25,
+                1: 15,
+                2: 10,
+                3: 10,
+                4: 10,
+                5: 1,
+                6: 25
+            }
+            sum_weights = sum(weights.values())
+            # normalize weights
+            for k, v in weights.items():
+                weights[k] = v/sum_weights
+            self._seg_loss = WeightedPixelWiseNLLoss(weights)
         else:
             self._seg_loss = FocalLoss()
 
