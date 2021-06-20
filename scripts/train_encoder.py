@@ -71,11 +71,12 @@ def run(args):
     model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     loss = ADLoss(loss_weights=args.loss_weights,
-                  tl_weights=args.tl_weights)
+                  tl_weights=args.tl_weights,
+                  seg_loss=args.loss)
     print(colored("[+] Model, optimizer and loss are ready!", "green"))
 
     avg_fn = lambda x: torch.mean(x).item()
-    cm_metric = ConfusionMatrix(num_classes=6, output_transform=output_transform_seg)
+    cm_metric = ConfusionMatrix(num_classes=7, output_transform=output_transform_seg)
     metrics = {
         'loss': Loss(loss_fn=loss, output_transform=lambda x: (x[0], x[1])),
         'loss_avg': RunningAverage(Loss(loss_fn=loss, output_transform=lambda x: (x[0], x[1]))),
@@ -85,10 +86,17 @@ def run(args):
         'tl_recall_avg': RunningAverage(Recall(output_transform=output_transform_tl)),
         'va_rmse': RootMeanSquaredError(output_transform=output_transform_va),
         'va_rmse_avg': RunningAverage(RootMeanSquaredError(output_transform=output_transform_va)),
-        'seg_dice': MetricsLambda(avg_fn, DiceCoefficient(cm_metric, ignore_index=5)),
-        # 'seg_dice_avg': RunningAverage(MetricsLambda(avg_fn, DiceCoefficient(cm_metric, ignore_index=5))),
-        'seg_iou': MetricsLambda(avg_fn, IoU(cm_metric, ignore_index=5)),
-        # 'seg_iou_avg': RunningAverage(MetricsLambda(avg_fn, IoU(cm_metric, ignore_index=5)))
+        'seg_dice': MetricsLambda(avg_fn, DiceCoefficient(cm_metric)),
+        'seg_iou': MetricsLambda(avg_fn, IoU(cm_metric)),
+        'seg_dice_without_background': MetricsLambda(avg_fn, DiceCoefficient(cm_metric, ignore_index=5)),
+        'seg_iou__without_background': MetricsLambda(avg_fn, IoU(cm_metric, ignore_index=5)),
+        'seg_dice_cars':  MetricsLambda(lambda x: x[0].item(), DiceCoefficient(cm_metric)),
+        'seg_dice_tl': MetricsLambda(lambda x: x[1].item(), DiceCoefficient(cm_metric)),
+        'seg_dice_roadlines': MetricsLambda(lambda x: x[2].item(), DiceCoefficient(cm_metric)),
+        'seg_dice_roads': MetricsLambda(lambda x: x[3].item(), DiceCoefficient(cm_metric)),
+        'seg_dice_sidewalks': MetricsLambda(lambda x: x[4].item(), DiceCoefficient(cm_metric)),
+        'seg_dice_background': MetricsLambda(lambda x: x[5].item(), DiceCoefficient(cm_metric)),
+        'seg_dice_pedestrian': MetricsLambda(lambda x: x[6].item(), DiceCoefficient(cm_metric)),
     }
     trainer = create_supervised_trainer(model,
                                         optimizer,
@@ -213,6 +221,8 @@ if __name__ == '__main__':
     parser.add_argument('--num-workers', default=4, type=int, help='Number of data loader workers')
 
     # weights
+    parser.add_argument('--seg-loss', default='dice', type=str, help='Type of loss used for semantic segmentation.'
+                                                                     '[dice, wnll, focal].')
     parser.add_argument('--loss-weights', default="1, 1, 1, 1", type=str,
                         help='Loss weights [segmentation, traffic light status, vehicle affordances ]')
     parser.add_argument('--tl-weights', default="0.2, 0.8", type=str,

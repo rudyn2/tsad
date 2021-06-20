@@ -278,7 +278,7 @@ class ADEncoder(nn.Module):
             self.backbone = ResNet(ResBlock, [3, 4, 6, 3], 4, 10)
         elif backbone.startswith("efficientnet"):
             self.backbone = EfficientNetBackbone(name=backbone)
-        self.seg = ImageSegmentationBranch(512, 6)
+        self.seg = ImageSegmentationBranch(512, 7)
         self.traffic_light_classifier = TrafficLightClassifier()
         self.vehicle_position = VehicleAffordanceRegressor()
         self.vehicle_orientation = VehicleAffordanceRegressor()

@@ -1,6 +1,6 @@
 import torch.nn as nn
 import torch
-from models.losses import DiceLoss
+from models.losses import DiceLoss, WeightedPixelWiseNLLoss, FocalLoss
 from torch import Tensor
 from typing import Tuple, Dict
 
@@ -9,12 +9,14 @@ class ADLoss(nn.Module):
     def __init__(self,
                  loss_weights: Tuple,
                  tl_weights: Tuple,
+                 seg_loss: str,
                  device: str = 'cuda'):
         """
         @param loss_weights: Loss weights associated to segmentation, traffic light, pedestrian and vehicle
                              affordances loss. In that order.
         @param tl_weights:  Weights associated to traffic light classification. Expected: (green_status_weight,
                             red_status_weight).
+        @param seg_loss: Type of segmentation loss.
         @param device: Device used for loss calculation. Expected: cpu or cuda.
 
 
@@ -22,7 +24,21 @@ class ADLoss(nn.Module):
         super(ADLoss, self).__init__()
 
         self._device = device
-        self._seg_loss = DiceLoss()
+        if seg_loss == 'dice':
+            self._seg_loss = DiceLoss()
+        elif seg_loss == 'wnll':
+            self._seg_loss = WeightedPixelWiseNLLoss(weights={
+                0: 0.3,
+                1: 0.1,
+                2: 0.15,
+                3: 0.1,
+                4: 0.1,
+                5: 0.05,
+                6: 0.5
+            })
+        else:
+            self._seg_loss = FocalLoss()
+
         self._loss_weights = loss_weights
         self._tl_loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(tl_weights, device=self._device))
         self._va_loss = nn.MSELoss()
@@ -54,6 +70,3 @@ class ADLoss(nn.Module):
         l3 = self._va_loss(prediction['vehicle_affordances'], target['vehicle_affordances'])
         loss = l1 * self._loss_weights[0] + l2 * self._loss_weights[1] + l3 * self._loss_weights[2]
         return loss
-
-
-
