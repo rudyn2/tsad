@@ -173,7 +173,9 @@ class ActorComposition(object):
                 })
     
     def transform(self, rgb1, semantic1, depth1, rgb2, semantic2, depth2, id):
-        mask = (semantic2 == id)
+        semantic_mask = (semantic2 == id)
+        depth_mask = (depth2 < depth1)
+        mask = np.logical_and(semantic_mask, depth_mask)
         rgb1[mask] = rgb2[mask]
         depth1[mask] = depth2[mask]
         semantic1[mask] = semantic2[mask]
@@ -184,12 +186,11 @@ class ActorComposition(object):
         processed = False
 
         for id in self._ids:
-            if len(self._actors[id]) == 0:
-                print(f"No examples for {id}")
+            #if len(self._actors[id]) == 0:
+            #    print(f"No examples for {id}")
             if np.sum(semantic1 == id)/semantic1.size <= self._tr_thresh and np.random.rand() < self._prob and len(self._actors[id]) > 0:
                 processed = True
                 random_idx = np.random.choice(range(len(self._actors[id])))
-                print(random_idx)
                 random_sample = self._actors[id][random_idx]
                 run_id = random_sample['run']
                 element = random_sample['timestamp']
@@ -212,6 +213,9 @@ if __name__ == '__main__':
     d2 = CarlaDatasetTransform('../dataset', prob=1.)
 
     id = 1000
+
+    actors = d2.composition._actors
+    print(f"Number of images with pedestrians: {len(actors[6])}\tNumber of images with vehicles: {len(actors[0])}\tNumber of images with TL: {len(actors[1])}")
 
     tic = time.time()
     x1, s1, tl1, v_aff1, pds1 = d1[id]
@@ -238,7 +242,7 @@ if __name__ == '__main__':
     #print(s1.cpu().numpy()[0][170:200, 190:220])
 
     axs[0,2].set_title('Depth original')
-    axs[0,2].imshow(depth, vmin=0, vmax=1, cmap='gray')
+    axs[0,2].imshow(np.log(depth), cmap='gray')
 
 
 
@@ -254,6 +258,6 @@ if __name__ == '__main__':
     axs[1,1].imshow(s2.cpu().numpy()[0], vmin=0, vmax=6)
 
     axs[1,2].set_title('Depth modified')
-    axs[1,2].imshow(depth, vmin=0, vmax=1, cmap='gray')
+    axs[1,2].imshow(np.log(depth), cmap='gray')
     plt.show()
     #print(d.get_random_full_episode())
