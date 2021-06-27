@@ -158,10 +158,11 @@ class ActorComposition(object):
         for id in ids:
             self._actors[id] = []
     
-    def _map_classes(self, semantic: torch.Tensor) -> torch.Tensor:
+    def _map_classes(self, semantic):
+        mapped_semantic = np.empty(semantic.shape)
         for k, v in __CLASS_MAPPING__.items():
-            semantic[semantic == k] = v
-        return semantic
+            mapped_semantic[semantic == k] = v
+        return mapped_semantic
     
     def detect(self, semantic, run, timestamp):
         semantic = self._map_classes(semantic)
