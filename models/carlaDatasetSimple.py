@@ -134,9 +134,10 @@ class CarlaDatasetSimple(Dataset):
         return x, s, tl, v_aff, pds
 
     def _map_classes(self, semantic: torch.Tensor) -> torch.Tensor:
+        mapped_semantic = torch.zeros_like(semantic)
         for k, v in self.CLASS_MAPPING.items():
-            semantic[semantic == k] = v
-        return semantic
+            mapped_semantic[semantic == k] = v
+        return mapped_semantic
 
     def __len__(self):
         return len(self.timestamps)
