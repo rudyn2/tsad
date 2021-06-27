@@ -89,7 +89,7 @@ class CarlaDatasetSimple(Dataset):
         idxs = [self.timestamps.index(t) for t in timestamps]
         camera, segmentation, traffic_light, vehicle_affordances = [], [], [], []
         for idx in sorted(idxs):
-            x, s, tl, v_aff, pds = self[idx]
+            x, s, tl, v_aff = self[idx]
             camera.append(x)
             segmentation.append(s)
             traffic_light.append(tl)
@@ -122,7 +122,7 @@ class CarlaDatasetSimple(Dataset):
 
         # get ground truth
         s = semantic[np.newaxis, :, :]
-        s = torch.tensor(s, dtype=torch.int8)
+        s = torch.tensor(s, dtype=torch.uint8)
         s = self._map_classes(s)
 
         tl = torch.tensor([1, 0] if data['tl_state'] == 'Green' else [0, 1], dtype=torch.float16)
@@ -130,15 +130,16 @@ class CarlaDatasetSimple(Dataset):
         return x, s, tl, v_aff
 
     def _map_classes(self, semantic: torch.Tensor) -> torch.Tensor:
+        mapped_semantic = torch.zeros_like(semantic)
         for k, v in self.CLASS_MAPPING.items():
-            semantic[semantic == k] = v
-        return semantic
+            mapped_semantic[semantic == k] = v
+        return mapped_semantic
 
     def __len__(self):
         return len(self.timestamps)
 
 
 if __name__ == '__main__':
-    d = CarlaDatasetSimple('../dataset')
+    d = CarlaDatasetSimple('../datasets')
     print(d.get_random_full_episode())
 
