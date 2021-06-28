@@ -250,8 +250,8 @@ if __name__ == '__main__':
                         help='Loss weights [segmentation, traffic light status, vehicle affordances ]')
     parser.add_argument('--tl-weights', default="0.2, 0.8", type=str,
                         help='Traffic light weights [Green, Red]')
-    parser.add_argument('--pd-weights', default="0.2, 0.8", type=str,
-                        help="Pedestrian classification weights []")
+    parser.add_argument('--pd-weights', default="0.6, 0.4", type=str,
+                        help="Pedestrian classification weights [pedestrian, no_pedestrian]")
 
     parser.add_argument('--epochs', default=2, type=int, help='Number of epochs.')
     parser.add_argument('--lr', default=0.0001, type=float, help='Learning rate.')
