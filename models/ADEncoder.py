@@ -152,6 +152,19 @@ class OutputConv(nn.Module):
         return x
 
 
+class OutputConv(nn.Module):
+
+    def __init__(self, in_channels: int, out_channels: int, mid_channels: int):
+        super(OutputConv, self).__init__()
+        self.double_conv = DoubleConv(in_channels, out_channels, mid_channels)
+        self.last_layer = nn.Conv2d(out_channels, out_channels, kernel_size=(1, 1))
+
+    def forward(self, x):
+        x = self.double_conv(x)
+        x = self.last_layer(x)
+        return x
+
+
 class ImageSegmentationBranch(nn.Module):
 
     def __init__(self, in_channels: int, output_channels: int):
@@ -225,12 +238,15 @@ class VehicleAffordanceRegressor(nn.Module):
         super(VehicleAffordanceRegressor, self).__init__()
         self.fc1 = nn.Linear(512 * 4 * 4, 512)
         self.relu = nn.ReLU()
-        self.fc2 = nn.Linear(512, 1)
+        self.fc2 = nn.Linear(512, 256)
+        self.fc3 = nn.Linear(256, 1)
 
     def forward(self, x):
         x = self.fc1(x)
         x = self.relu(x)
         x = self.fc2(x)
+        x = self.relu(x)
+        x = self.fc3(x)
         # x = torch.max(torch.min(x, self.UPPER_BOUND), self.LOWER_BOUND)
         return x
 
@@ -269,15 +285,14 @@ class ADEncoder(nn.Module):
     Autonomous Driving Encoder
     """
 
-    def __init__(self, backbone: str, use_bn: bool = False):
+    def __init__(self, backbone: str):
         super(ADEncoder, self).__init__()
         if backbone == "resnet":
             self.backbone = ResNet(ResBlock, [3, 4, 6, 3], 4, 10)
         elif backbone.startswith("efficientnet"):
             self.backbone = EfficientNetBackbone(name=backbone)
-        self.seg = ImageSegmentationBranch(512, 6)
+        self.seg = ImageSegmentationBranch(512, 7)
         self.traffic_light_classifier = TrafficLightClassifier()
-        self.pedestrian_classifier = PedestrianClassifier()
         self.vehicle_position = VehicleAffordanceRegressor()
         self.vehicle_orientation = VehicleAffordanceRegressor()
 
@@ -288,11 +303,9 @@ class ADEncoder(nn.Module):
         traffic_light_status = self.traffic_light_classifier(flatten_embedding)
         vehicle_position = self.vehicle_position(flatten_embedding)
         vehicle_orientation = self.vehicle_orientation(flatten_embedding)
-        pedestrian = self.pedestrian_classifier(flatten_embedding)
         return {'segmentation': seg_img,
                 'traffic_light_status': traffic_light_status,
-                'vehicle_affordances': torch.cat([vehicle_position, vehicle_orientation], dim=1),
-                'pedestrian': pedestrian
+                'vehicle_affordances': torch.cat([vehicle_position, vehicle_orientation], dim=1)
                 }
 
     def encode(self, x):
