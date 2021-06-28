@@ -300,7 +300,7 @@ if __name__ == "__main__":
     else:
         dataset = CarlaDatasetSimple(args.data)
 
-    model = ADEncoder(backbone=args.backbone_type, use_bn=args.use_bn)
+    model = ADEncoder(backbone=args.backbone_type)
     model.to(device)
 
     tl_weights = str(args.tl_weights).split(",")

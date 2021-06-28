@@ -8,35 +8,35 @@ import random
 from torchvision.transforms import transforms
 
 __CLASS_MAPPING__ = {
-        0: 5,  # None
-        1: 5,  # Buildings
-        2: 5,  # Fences
-        3: 5,  # Other
-        4: 6,  # Pedestrians
-        5: 5,  # Poles
-        6: 2,  # RoadLines
-        7: 3,  # Roads
-        8: 4,  # Sidewalks
-        9: 5,  # Vegetation
-        10: 0,  # Vehicles
-        11: 5,  # Walls
-        12: 5,  # TrafficSigns
-        13: 5,  # Sky
-        14: 5,  # Ground
-        15: 5,  # Bridge
-        16: 5,  # RailTrack
-        17: 5,  # GuardRail
-        18: 1,  # Traffic Light
-        19: 5,  # Static
-        20: 5,  # Dynamic
-        21: 5,  # Water
-        22: 5  # Terrain
-    }
+    0: 5,  # None
+    1: 5,  # Buildings
+    2: 5,  # Fences
+    3: 5,  # Other
+    4: 6,  # Pedestrians
+    5: 5,  # Poles
+    6: 2,  # RoadLines
+    7: 3,  # Roads
+    8: 4,  # Sidewalks
+    9: 5,  # Vegetation
+    10: 0,  # Vehicles
+    11: 5,  # Walls
+    12: 5,  # TrafficSigns
+    13: 5,  # Sky
+    14: 5,  # Ground
+    15: 5,  # Bridge
+    16: 5,  # RailTrack
+    17: 5,  # GuardRail
+    18: 1,  # Traffic Light
+    19: 5,  # Static
+    20: 5,  # Dynamic
+    21: 5,  # Water
+    22: 5  # Terrain
+}
+
 
 class CarlaDatasetTransform(Dataset):
 
     # moving obstacles (0),  traffic lights (1),  road markers(2),  road (3),  sidewalk (4) and background (5).
-    
 
     def __init__(self, path: str, prob: float):
         self.path = path
@@ -48,11 +48,11 @@ class CarlaDatasetTransform(Dataset):
         ])
         self.depth_transform = None
 
-        self.composition = ActorComposition(__CLASS_MAPPING__[10], __CLASS_MAPPING__[4], __CLASS_MAPPING__[18], path=path, prob=prob)
+        self.composition = ActorComposition(__CLASS_MAPPING__[10], __CLASS_MAPPING__[4], __CLASS_MAPPING__[18],
+                                            path=path, prob=prob)
 
         self.hdf5_path = self.read_timestamps()
         self.json_path = self.read_metadata()
-        
 
     def read_timestamps(self):
         hdf5_files = list(Path(self.path).glob('**/*.hdf5'))
@@ -138,12 +138,8 @@ class CarlaDatasetTransform(Dataset):
 
         return x, s, tl, v_aff, pds, proc
 
-    
-
     def __len__(self):
         return len(self.timestamps)
-
-
 
 
 class ActorComposition(object):
@@ -157,13 +153,13 @@ class ActorComposition(object):
         self._actors = {}
         for id in ids:
             self._actors[id] = []
-    
+
     def _map_classes(self, semantic):
         mapped_semantic = np.empty(semantic.shape)
         for k, v in __CLASS_MAPPING__.items():
             mapped_semantic[semantic == k] = v
         return mapped_semantic
-    
+
     def detect(self, semantic, run, timestamp):
         semantic = self._map_classes(semantic)
         for id in self._ids:
@@ -172,7 +168,7 @@ class ActorComposition(object):
                     'run': run,
                     'timestamp': timestamp
                 })
-    
+
     def transform(self, rgb1, semantic1, depth1, rgb2, semantic2, depth2, id):
         semantic_mask = (semantic2 == id)
         depth_mask = (depth2 < depth1)
@@ -181,15 +177,16 @@ class ActorComposition(object):
         depth1[mask] = depth2[mask]
         semantic1[mask] = semantic2[mask]
         return rgb1, semantic1, depth1
-    
+
     def __call__(self, rgb1, semantic1, depth1):
         semantic1 = self._map_classes(semantic1)
         processed = False
 
         for id in self._ids:
-            #if len(self._actors[id]) == 0:
+            # if len(self._actors[id]) == 0:
             #    print(f"No examples for {id}")
-            if np.sum(semantic1 == id)/semantic1.size <= self._tr_thresh and np.random.rand() < self._prob and len(self._actors[id]) > 0:
+            if np.sum(semantic1 == id) / semantic1.size <= self._tr_thresh and np.random.rand() < self._prob and len(
+                    self._actors[id]) > 0:
                 processed = True
                 random_idx = np.random.choice(range(len(self._actors[id])))
                 random_sample = self._actors[id][random_idx]
@@ -197,12 +194,11 @@ class ActorComposition(object):
                 element = random_sample['timestamp']
                 with h5py.File(self.hdf5_path, "r") as f:
                     sample2 = f[run_id][element]
-                    rgb2, semantic2, depth2 = np.array(sample2['rgb']), self._map_classes(np.array(sample2['semantic'])), np.array(sample2['depth'])
+                    rgb2, semantic2, depth2 = np.array(sample2['rgb']), self._map_classes(
+                        np.array(sample2['semantic'])), np.array(sample2['depth'])
                     rgb1, semantic1, depth1 = self.transform(rgb1, semantic1, depth1, rgb2, semantic2, depth2, id)
 
         return rgb1, semantic1, depth1, processed
-
-
 
 
 if __name__ == '__main__':
@@ -216,7 +212,8 @@ if __name__ == '__main__':
     id = 1000
 
     actors = d2.composition._actors
-    print(f"Number of images with pedestrians: {len(actors[6])}\tNumber of images with vehicles: {len(actors[0])}\tNumber of images with TL: {len(actors[1])}")
+    print(
+        f"Number of images with pedestrians: {len(actors[6])}\tNumber of images with vehicles: {len(actors[0])}\tNumber of images with TL: {len(actors[1])}")
 
     tic = time.time()
     x1, s1, tl1, v_aff1, pds1 = d1[id]
@@ -234,31 +231,29 @@ if __name__ == '__main__':
     depth = x1.cpu().numpy()[0]
 
     fig, axs = plt.subplots(2, 3)
-    axs[0,0].set_title('RGB original')
-    axs[0,0].imshow(image, vmin=0, vmax=1)
+    axs[0, 0].set_title('RGB original')
+    axs[0, 0].imshow(image, vmin=0, vmax=1)
 
-    axs[0,1].set_title('Semantic original')
-    axs[0,1].imshow(s1.cpu().numpy()[0], vmin=0, vmax=6)
-    #print(s1.cpu().numpy()[0][170:200, 190:200])
-    #print(s1.cpu().numpy()[0][170:200, 190:220])
+    axs[0, 1].set_title('Semantic original')
+    axs[0, 1].imshow(s1.cpu().numpy()[0], vmin=0, vmax=6)
+    # print(s1.cpu().numpy()[0][170:200, 190:200])
+    # print(s1.cpu().numpy()[0][170:200, 190:220])
 
-    axs[0,2].set_title('Depth original')
-    axs[0,2].imshow(np.log(depth), cmap='gray')
-
-
+    axs[0, 2].set_title('Depth original')
+    axs[0, 2].imshow(np.log(depth), cmap='gray')
 
     image = np.transpose(x2.cpu().numpy(), axes=(1, 2, 0))[:, :, -3:]
     print(f"\nNumber after ped pixels: {np.sum(s2.cpu().numpy() == 6)}")
     print(f"Number after tl pixels: {np.sum(s2.cpu().numpy() == 1)}")
     print(f"Number after ve pixels: {np.sum(s2.cpu().numpy() == 0)}")
     depth = x2.cpu().numpy()[0]
-    axs[1,0].set_title('RGB modified')
-    axs[1,0].imshow(image, vmin=0, vmax=1)
+    axs[1, 0].set_title('RGB modified')
+    axs[1, 0].imshow(image, vmin=0, vmax=1)
 
-    axs[1,1].set_title('Semantic modified')
-    axs[1,1].imshow(s2.cpu().numpy()[0], vmin=0, vmax=6)
+    axs[1, 1].set_title('Semantic modified')
+    axs[1, 1].imshow(s2.cpu().numpy()[0], vmin=0, vmax=6)
 
-    axs[1,2].set_title('Depth modified')
-    axs[1,2].imshow(np.log(depth), cmap='gray')
+    axs[1, 2].set_title('Depth modified')
+    axs[1, 2].imshow(np.log(depth), cmap='gray')
     plt.show()
-    #print(d.get_random_full_episode())
+    # print(d.get_random_full_episode())
