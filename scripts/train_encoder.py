@@ -9,7 +9,6 @@ from ignite.contrib.handlers.wandb_logger import WandBLogger, global_step_from_e
 from custom_metrics import Recall
 from ignite.handlers import EarlyStopping, ModelCheckpoint
 
-
 NUM_CLASSES = 7
 
 
@@ -84,12 +83,16 @@ def run(args):
     print(colored("[*] Initializing model, optimizer and loss", "white"))
     model = ADEncoder(backbone='efficientnet-b5')
     model.to(device)
+    if args.checkpoint:
+        model.load_state_dict(torch.load(args.checkpoint))
+        print(colored("Checkpoint loaded!", "white"))
+    model.train()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     loss = ADLoss(loss_weights=args.loss_weights,
                   tl_weights=args.tl_weights,
                   pd_weights=args.pd_weights,
                   seg_loss=args.seg_loss,
-            )
+                  )
     print(colored("[+] Model, optimizer and loss are ready!", "green"))
 
     avg_fn = lambda x: torch.mean(x).item()
@@ -111,7 +114,7 @@ def run(args):
         'seg_iou': MetricsLambda(avg_fn, IoU(cm_metric)),
         'seg_dice_without_background': MetricsLambda(avg_fn, DiceCoefficient(cm_metric, ignore_index=5)),
         'seg_iou_without_background': MetricsLambda(avg_fn, IoU(cm_metric, ignore_index=5)),
-        'seg_dice_cars':  MetricsLambda(lambda x: x[0].item(), DiceCoefficient(cm_metric)),
+        'seg_dice_cars': MetricsLambda(lambda x: x[0].item(), DiceCoefficient(cm_metric)),
         'seg_dice_tl': MetricsLambda(lambda x: x[1].item(), DiceCoefficient(cm_metric)),
         'seg_dice_roadlines': MetricsLambda(lambda x: x[2].item(), DiceCoefficient(cm_metric)),
         'seg_dice_roads': MetricsLambda(lambda x: x[3].item(), DiceCoefficient(cm_metric)),
@@ -187,7 +190,7 @@ def run(args):
         score_name="validation_accuracy",
         global_step_transform=global_step_from_engine(trainer)
     )
-    val_evaluator.add_event_handler(Events.COMPLETED, model_checkpoint,  {'model': model})
+    val_evaluator.add_event_handler(Events.COMPLETED, model_checkpoint, {'model': model})
 
     # training logs per iteration
     wandb_logger.attach_output_handler(
@@ -241,6 +244,7 @@ if __name__ == '__main__':
     parser.add_argument('--data', default='../dataset', type=str, help='Path to dataset folder')
     parser.add_argument('--dataset', default="transform", type=str, help='Type of dataset [simple, transform].')
     parser.add_argument('--batch-size', default=64, type=int, help='Batch size.')
+    parser.add_argument('--checkpoint', default=None, type=str, help='Path to model checkpoint from which to start.')
     parser.add_argument('--num-workers', default=4, type=int, help='Number of data loader workers')
 
     # weights
