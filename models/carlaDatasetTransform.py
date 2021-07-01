@@ -201,6 +201,16 @@ class ActorComposition(object):
         return rgb1, semantic1, depth1, processed
 
 
+class RandomCrop(object):
+    """
+    Implements random cropping.
+    """
+    def __init__(self):
+        pass
+
+    def __call__(self, *args, **kwargs):
+        pass
+
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from carlaDatasetSimple import CarlaDatasetSimple
