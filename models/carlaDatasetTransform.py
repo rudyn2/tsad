@@ -130,6 +130,10 @@ class CarlaDatasetTransform(Dataset):
         s = semantic[np.newaxis, :, :]
         s = torch.tensor(s, dtype=torch.int8)
 
+        # cropping
+        x = x[:, 64:, :]
+        s = s[:, 64:, :]
+
         tl = torch.tensor([1, 0] if data['tl_state'] == 'Green' else [0, 1], dtype=torch.float16)
         v_aff = torch.tensor([data['lane_distance'], data['lane_orientation']]).float()
         sum_pds = (s == 6).sum()
@@ -143,7 +147,7 @@ class CarlaDatasetTransform(Dataset):
 
 
 class ActorComposition(object):
-    def __init__(self, *ids, path='../dataset', prob=0):
+    def __init__(self, *ids, path='../dataset', prob: float = 0):
         self._prob = prob
         self._ids = ids
         self.hdf5_path = list(Path(path).glob('**/*.hdf5'))[0]
@@ -201,24 +205,13 @@ class ActorComposition(object):
         return rgb1, semantic1, depth1, processed
 
 
-class Crop:
-    """
-    Implements simple cropping. Transform an image from CxWxH to CxW'xH'.
-    """
-    def __init__(self):
-        pass
-
-    def __call__(self, *args, **kwargs):
-        pass
-
-
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from carlaDatasetSimple import CarlaDatasetSimple
     import time
 
-    d1 = CarlaDatasetSimple('../dataset')
-    d2 = CarlaDatasetTransform('../dataset', prob=1.)
+    d1 = CarlaDatasetSimple('../datasets')
+    d2 = CarlaDatasetTransform('../datasets', prob=1.)
 
     id = 1000
 

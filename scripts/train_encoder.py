@@ -218,7 +218,6 @@ def run(args):
         metric_names="all",
         global_step_transform=lambda *_: trainer.state.iteration,
     )
-
     wandb_logger.watch(model)
 
     trainer.run(train_loader, max_epochs=args.epochs)
