@@ -67,7 +67,7 @@ def run(args):
     if args.dataset == "simple":
         dataset = CarlaDatasetSimple(args.data)
     else:
-        dataset = CarlaDatasetTransform(args.data, prob=0.5)
+        dataset = CarlaDatasetTransform(args.data, prob=1)
     n_val = int(len(dataset) * 0.05)
     n_train = len(dataset) - n_val
     train, val = random_split(dataset, [n_train, n_val])

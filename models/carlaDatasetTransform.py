@@ -48,7 +48,7 @@ class CarlaDatasetTransform(Dataset):
         ])
         self.depth_transform = None
 
-        self.composition = ActorComposition(__CLASS_MAPPING__[10], __CLASS_MAPPING__[4], __CLASS_MAPPING__[18],
+        self.composition = ActorComposition(__CLASS_MAPPING__[4], __CLASS_MAPPING__[18],
                                             path=path, prob=prob)
 
         self.hdf5_path = self.read_timestamps()
@@ -204,16 +204,6 @@ class ActorComposition(object):
 
         return rgb1, semantic1, depth1, processed
 
-
-class RandomCrop(object):
-    """
-    Implements random cropping.
-    """
-    def __init__(self):
-        pass
-
-    def __call__(self, *args, **kwargs):
-        pass
 
 if __name__ == '__main__':
     import matplotlib.pyplot as plt

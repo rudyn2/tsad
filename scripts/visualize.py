@@ -84,7 +84,7 @@ def main(file_path: str, metadata: str):
         rgb_image = np.array(ego_run_imgs[timestamp]['rgb'])
         depth_map = np.array(ego_run_imgs[timestamp]['depth'])
         semantic_map = np.array(ego_run_imgs[timestamp]['semantic'])
-        cv2.imshow('rgb', rgb_image)
+        cv2.imshow('rgb', rgb_image[64:, :, :])
         cv2.imshow('depth', depth2grayscale(depth_map))
         cv2.imshow('semantic', labels_to_cityscapes_palette(semantic_map))
 
