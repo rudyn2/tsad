@@ -22,7 +22,7 @@ if __name__ == "__main__":
 
     print("Initializing...")
     dataset = CarlaDatasetSimple(args.data)
-    model = ADEncoder(backbone=args.backbone, use_bn=True)
+    model = ADEncoder(backbone=args.backbone)
     model.to(args.device)
     model.load_state_dict(torch.load(args.model))
     model.eval()

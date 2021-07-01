@@ -144,23 +144,12 @@ class OutputConv(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, mid_channels: int):
         super(OutputConv, self).__init__()
         self.double_conv = DoubleConv(in_channels, out_channels, mid_channels)
+        self.avg_pool = nn.AdaptiveAvgPool2d((224, 288))
         self.last_layer = nn.Conv2d(out_channels, out_channels, kernel_size=(1, 1))
 
     def forward(self, x):
         x = self.double_conv(x)
-        x = self.last_layer(x)
-        return x
-
-
-class OutputConv(nn.Module):
-
-    def __init__(self, in_channels: int, out_channels: int, mid_channels: int):
-        super(OutputConv, self).__init__()
-        self.double_conv = DoubleConv(in_channels, out_channels, mid_channels)
-        self.last_layer = nn.Conv2d(out_channels, out_channels, kernel_size=(1, 1))
-
-    def forward(self, x):
-        x = self.double_conv(x)
+        x = self.avg_pool(x)
         x = self.last_layer(x)
         return x
 
