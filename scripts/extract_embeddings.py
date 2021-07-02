@@ -12,6 +12,7 @@ sys.path.append('.')
 
 from models.ADEncoder import ADEncoder
 from models.carlaDatasetSimple import CarlaDatasetSimple
+from models.carlaDatasetTransform import CarlaDatasetTransform
 
 
 class SubDataset(Dataset):
@@ -120,6 +121,6 @@ if __name__ == '__main__':
     model.eval()
 
     # instantiate dataset
-    dataset = CarlaDatasetSimple(path=args.data)
+    dataset = CarlaDatasetTransform(path=args.data, prob=0.0)
     extractor = Extractor(model=model, dataset=dataset, output_path=args.output)
     extractor.extract()
