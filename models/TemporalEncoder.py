@@ -138,7 +138,7 @@ class VanillaRNNEncoder(nn.Module):
         # y (4*B, 512) => (B, 512*4) => (B, 512*4*4)
         y = self.output_fc(y.data.view(embedding.shape[0], -1))
         # y (B, 512, 4, 4)
-        return y.view(embedding.shape[0], embedding.shape[2], embedding.shape[3], embedding.shape[4])
+        return y.view(-1, embedding.shape[-3], embedding.shape[-2], embedding.shape[-1])
 
     def freeze(self):
         for param in self.parameters():
