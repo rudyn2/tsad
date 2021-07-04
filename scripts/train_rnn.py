@@ -48,7 +48,7 @@ if __name__ == '__main__':
     n_val = int(len(dataset) * 0.1)
     n_train = len(dataset) - n_val
     train, val = random_split(dataset, [n_train, n_val])
-    train_loader = DataLoader(train, batch_size=args.batch_size, collate_fn=PadSequence())
+    train_loader = DataLoader(train, batch_size=args.batch_size, collate_fn=PadSequence(), shuffle=True)
     val_loader = DataLoader(val, batch_size=args.batch_size, collate_fn=PadSequence())
     mse_loss = torch.nn.MSELoss()
 
