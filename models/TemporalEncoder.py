@@ -136,7 +136,7 @@ class VanillaRNNEncoder(nn.Module):
         # Output of lstm is stacked through all outputs (#outputs == #inputs), we get last output
         # y (4*B, 512) => (B, 4*512, 1, 1) => (B, 512, 4, 4)
         # y (4*B, 512) => (B, 512*4) => (B, 512*4*4)
-        y = self.output_fc(y.view(embedding.shape[0], -1))
+        y = self.output_fc(y.data.view(embedding.shape[0], -1))
         # y (B, 512, 4, 4)
         return y.view(embedding.shape[0], embedding.shape[2], embedding.shape[3], embedding.shape[4])
 
