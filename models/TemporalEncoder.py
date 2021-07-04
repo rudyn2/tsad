@@ -103,9 +103,10 @@ class VanillaRNNEncoder(nn.Module):
             nn.Linear(16, speed_chn)
         )
 
-        self.output_upconv = nn.ConvTranspose2d(
-            2 * hidden_size * 4, 512, kernel_size=(4, 4), stride=(4, 4)
-        )
+        # self.output_upconv = nn.ConvTranspose2d(
+        #     2 * hidden_size * 4, 512, kernel_size=(4, 4), stride=(4, 4)
+        # )
+        self.output_fc = nn.Linear(512*4, 512*4*4)
 
     def forward(self, embedding, action, speed, embedding_length):
         """
@@ -134,8 +135,10 @@ class VanillaRNNEncoder(nn.Module):
         y, _ = self.lstm(x_pack)
         # Output of lstm is stacked through all outputs (#outputs == #inputs), we get last output
         # y (4*B, 512) => (B, 4*512, 1, 1) => (B, 512, 4, 4)
-        y = self.output_upconv(y.data.view(embedding.shape[0], -1).unsqueeze(dim=-1).unsqueeze(dim=-1))
-        return y
+        # y (4*B, 512) => (B, 512*4) => (B, 512*4*4)
+        y = self.output_fc(y.view(embedding.shape[0], -1))
+        # y (B, 512, 4, 4)
+        return y.view(embedding.shape[0], embedding.shape[2], embedding.shape[3], embedding.shape[4])
 
     def freeze(self):
         for param in self.parameters():
