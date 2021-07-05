@@ -98,9 +98,6 @@ class VanillaRNNEncoder(nn.Module):
             nn.Linear(16, speed_chn)
         )
 
-        # self.output_upconv = nn.ConvTranspose2d(
-        #     2 * hidden_size * 4, 512, kernel_size=(4, 4), stride=(4, 4)
-        # )
         input_fc_size = 4 * (2 if bidirectional else 1) * hidden_size   # times 4 because every sequence has length 4
         self.output_fc = nn.Linear(input_fc_size, 512*4*4)
 

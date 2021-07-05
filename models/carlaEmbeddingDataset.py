@@ -40,14 +40,14 @@ class CarlaEmbeddingDataset(Dataset):
         self._timestamps = list(self._timestamp2run.keys())
 
         # just some episodes
-        self._timestamps = self._timestamps[:2000]
-        filtered_metadata = {}
-        for t in self._timestamps:
-            run_id = self._timestamp2run[t]
-            if run_id not in filtered_metadata.keys():
-                filtered_metadata[run_id] = self._metadata[run_id]
-        self._metadata = filtered_metadata
-        print("")
+        # self._timestamps = self._timestamps[:2000]
+        # filtered_metadata = {}
+        # for t in self._timestamps:
+        #     run_id = self._timestamp2run[t]
+        #     if run_id not in filtered_metadata.keys():
+        #         filtered_metadata[run_id] = self._metadata[run_id]
+        # self._metadata = filtered_metadata
+        # print("")
 
     def read_metadata(self):
         with open(self.json_path, "r") as f:
