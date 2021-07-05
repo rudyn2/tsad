@@ -75,7 +75,7 @@ class RNNEncoder(nn.Module):
 
 class VanillaRNNEncoder(nn.Module):
     def __init__(self, num_layers: int = 2, hidden_size: int = 512, action__chn: int = 64, speed_chn: int = 64,
-                 bidirectional: bool = False):
+                 dropout: float = 0, bidirectional: bool = False):
         super(VanillaRNNEncoder, self).__init__()
         self.hidden_size = hidden_size
         self.lstm = nn.LSTM(
@@ -83,6 +83,7 @@ class VanillaRNNEncoder(nn.Module):
             hidden_size=hidden_size,
             num_layers=num_layers,
             bidirectional=bidirectional,
+            dropout=dropout,
             batch_first=True
         )
 

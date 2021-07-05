@@ -22,6 +22,7 @@ if __name__ == '__main__':
                                                                       'be loaded into memory before training. '
                                                                       'offline: the embeddings'
                                                                       'will be loaded lazily')
+    parser.add_argument('--dropout', default=0, type=float, help='LSTM dropout.')
     parser.add_argument('--bidirectional', action='store_true', help='Whether to use bidirectional LSTM or not.')
     parser.add_argument('--hidden-size', default=256, type=int, help='LSTM hidden size')
     parser.add_argument('--num-layers', default=2, type=int, help='LSTM number of hidden layers')
@@ -59,7 +60,8 @@ if __name__ == '__main__':
             hidden_size=args.hidden_size,
             action__chn=args.action_channels,
             speed_chn=args.speed_channels,
-            bidirectional=args.bidirectional
+            bidirectional=args.bidirectional,
+            dropout=args.dropout,
             )
     elif args.rnn_model == "convol":
         model = RNNEncoder(
@@ -83,6 +85,7 @@ if __name__ == '__main__':
     config.speed_channels = args.speed_channels
     config.action_channels = args.action_channels
     config.bidirectional = args.bidirectional
+    config.dropout = args.dropout
     config.epochs = args.epochs
     config.learning_rate = args.lr
 
