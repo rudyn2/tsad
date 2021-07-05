@@ -77,7 +77,12 @@ if __name__ == '__main__':
     config.model = model.__class__.__name__
     config.device = device
     config.batch_size = args.batch_size
+    config.rnn_model = args.rnn_model
     config.hidden_size = args.hidden_size
+    config.num_layers = args.num_layers
+    config.speed_channels = args.speed_channels
+    config.action_channels = args.action_channels
+    config.bidirectional = args.bidirectional
     config.epochs = args.epochs
     config.learning_rate = args.lr
 
