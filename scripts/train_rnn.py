@@ -101,7 +101,7 @@ if __name__ == '__main__':
 
             avg_train_loss = train_total_loss / (i + 1)
             sys.stdout.write('\r')
-            sys.stdout.write(f"{tag}Epoch: {epoch + 1}({i}/{len(train_loader)})| Train loss: {avg_train_loss:.5f}")
+            sys.stdout.write(f"{tag}Epoch: {epoch + 1}({i + 1}/{len(train_loader)})| Train loss: {avg_train_loss:.5f}")
             wandb.log({'train/loss': avg_train_loss})
 
         avg_train_loss = train_total_loss / len(train_loader)
