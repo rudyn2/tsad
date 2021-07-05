@@ -102,7 +102,7 @@ class VanillaRNNEncoder(nn.Module):
         input_fc_size = 4 * (2 if bidirectional else 1) * hidden_size   # times 4 because every sequence has length 4
         self.output_fc = nn.Linear(input_fc_size, 512*4*4)
 
-    def forward(self, embedding, action, speed, embedding_length):
+    def forward(self, embedding, action, speed):
         """
         Output dim: BxHiddenSize
         """
