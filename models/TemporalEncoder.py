@@ -122,13 +122,13 @@ class VanillaRNNEncoder(nn.Module):
         speed_cod = torch.cat((speed_cod, speed_cod, speed_cod, speed_cod), dim=1)
 
         # Visual emb (B, 4, 512, 4, 4) => (4*B, 512, 4, 4) => (4*B, 2048, 1, 1) => (B, 4, 2048)
-        embedding = self.embedding_conv(
+        vis_embedding = self.embedding_conv(
             embedding.view(-1, embedding.shape[-3], embedding.shape[-2], embedding.shape[-1])).view(embedding.shape[0],
                                                                                                     embedding.shape[1],
                                                                                                     -1)
 
         # Cat embeddings and action (B, 4, 2048) + (B, 4, 64) + (B, 4, 64) => (B, 4, 2176)
-        action_emb = torch.cat((embedding, action_cod, speed_cod), dim=2)
+        action_emb = torch.cat((vis_embedding, action_cod, speed_cod), dim=2)
 
         x_pack = pack_padded_sequence(action_emb, embedding_length, batch_first=True)
         # h0, c0 = torch.randn(embedding.shape[0], embedding.shape[1], self.hidden_size), torch.randn(embedding.shape[0], embedding.shape[1], self.hidden_size)
