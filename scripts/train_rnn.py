@@ -85,6 +85,7 @@ if __name__ == '__main__':
     for epoch in range(args.epochs):
 
         # Train
+        model.train()
         train_total_loss = 0
         for i, (embeddings, embeddings_length, actions, speeds, embeddings_label) in enumerate(train_loader):
             embeddings, embeddings_label, actions, speeds = embeddings.to(device), embeddings_label.to(device), actions.to(
@@ -107,6 +108,7 @@ if __name__ == '__main__':
 
         # Validate
         val_total_loss = 0
+        model.eval()
         for embeddings, embeddings_length, actions, speeds, embeddings_label in val_loader:
             with torch.no_grad():
                 embeddings, embeddings_label, actions, speeds = embeddings.to(device), embeddings_label.to(device), actions.to(

@@ -39,6 +39,16 @@ class CarlaEmbeddingDataset(Dataset):
                     self._timestamp2run[timestamp] = run
         self._timestamps = list(self._timestamp2run.keys())
 
+        # just some episodes
+        self._timestamps = self._timestamps[:2000]
+        filtered_metadata = {}
+        for t in self._timestamps:
+            run_id = self._timestamp2run[t]
+            if run_id not in filtered_metadata.keys():
+                filtered_metadata[run_id] = self._metadata[run_id]
+        self._metadata = filtered_metadata
+        print("")
+
     def read_metadata(self):
         with open(self.json_path, "r") as f:
             self._metadata = json.load(f)
@@ -96,7 +106,8 @@ class CarlaOnlineEmbeddingDataset(Dataset):
 if __name__ == '__main__':
     from torch.utils.data import DataLoader
 
-    d = CarlaOnlineEmbeddingDataset(embeddings_path='../scripts/embeddings.hdf5', json_path='../dataset/sample6.json')
+    d = CarlaOnlineEmbeddingDataset(embeddings_path='../dataset/embeddings/embeddings.hdf5',
+                                    json_path='../dataset/embeddings/embeddings.json')
     loader = DataLoader(d, batch_size=8, collate_fn=PadSequence(), drop_last=True)
 
     for batch in loader:
