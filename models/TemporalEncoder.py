@@ -75,14 +75,14 @@ class RNNEncoder(nn.Module):
 
 class VanillaRNNEncoder(nn.Module):
     def __init__(self, num_layers: int = 2, hidden_size: int = 512, action__chn: int = 64, speed_chn: int = 64,
-                 state_chn: int = 2048):
+                 bidirectional: bool = False):
         super(VanillaRNNEncoder, self).__init__()
         self.hidden_size = hidden_size
         self.lstm = nn.LSTM(
             input_size=8192 + action__chn + speed_chn,
             hidden_size=hidden_size,
             num_layers=num_layers,
-            bidirectional=True,
+            bidirectional=bidirectional,
             batch_first=True
         )
 
@@ -101,7 +101,8 @@ class VanillaRNNEncoder(nn.Module):
         # self.output_upconv = nn.ConvTranspose2d(
         #     2 * hidden_size * 4, 512, kernel_size=(4, 4), stride=(4, 4)
         # )
-        self.output_fc = nn.Linear(2*4096, 512*4*4)
+        input_fc_size = 4 * (2 if bidirectional else 1) * hidden_size   # times 4 because every sequence has length 4
+        self.output_fc = nn.Linear(input_fc_size, 512*4*4)
 
     def forward(self, embedding, action, speed, embedding_length):
         """

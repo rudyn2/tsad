@@ -59,7 +59,7 @@ if __name__ == '__main__':
             hidden_size=args.hidden_size,
             action__chn=args.action_channels,
             speed_chn=args.speed_channels,
-            state_chn=args.state_channels
+            bidirectional=args.bidirectional
             )
     elif args.rnn_model == "convol":
         model = RNNEncoder(
