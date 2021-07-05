@@ -82,7 +82,8 @@ class VanillaRNNEncoder(nn.Module):
             input_size=state_chn + action__chn + speed_chn,
             hidden_size=hidden_size,
             num_layers=num_layers,
-            bidirectional=True
+            bidirectional=True,
+            batch_first=True
         )
 
         self.embedding_conv = nn.Sequential(
