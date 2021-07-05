@@ -79,17 +79,11 @@ class VanillaRNNEncoder(nn.Module):
         super(VanillaRNNEncoder, self).__init__()
         self.hidden_size = hidden_size
         self.lstm = nn.LSTM(
-            input_size=8704,
+            input_size=8192 + action__chn + speed_chn,
             hidden_size=hidden_size,
             num_layers=num_layers,
             bidirectional=True,
             batch_first=True
-        )
-
-        self.embedding_conv = nn.Sequential(
-            nn.Conv2d(512, 1024, kernel_size=(2, 2), stride=(2, 2)),
-            nn.ReLU(),
-            nn.Conv2d(1024, state_chn, kernel_size=(2, 2), stride=(2, 2))
         )
 
         self.action_cod = nn.Sequential(
@@ -113,31 +107,24 @@ class VanillaRNNEncoder(nn.Module):
         """
         Output dim: BxHiddenSize
         """
-        # Action (B, 3) => (B, 64) => (B, 1, 64)
+        # Action (B, 3) => (B, action_chn) => (B, 1, action_chn)
         action_cod = self.action_cod(action).unsqueeze(dim=1)
-        # Action (B, 1, 64) => (B, 4, 64)
+        # Action (B, 1, action_chn) => (B, 4, action_chn)
         action_cod = torch.cat((action_cod, action_cod, action_cod, action_cod), dim=1)
-        # Speed (B, 3) => (B, 1, 64)
+        # Speed (B, 3) => (B, 1, speed_chn)
         speed_cod = self.speed_cod(speed).unsqueeze(dim=1)
-        # Speed (B, 1, 64) => (B, 4, 64)
+        # Speed (B, 1, speed_chn) => (B, 4, speed_chn)
         speed_cod = torch.cat((speed_cod, speed_cod, speed_cod, speed_cod), dim=1)
 
-        # Visual emb (B, 4, 512, 4, 4) => (4*B, 512, 4, 4) => (4*B, 2048, 1, 1) => (B, 4, 2048)
-        # vis_embedding = self.embedding_conv(
-        #     embedding.view(-1, embedding.shape[-3], embedding.shape[-2], embedding.shape[-1])).view(embedding.shape[0],
-        #                                                                                             embedding.shape[1],
-        #                                                                                             -1)
+        # (B, T, 512, 4, 4) => (B, T, 8192)
         vis_embedding = embedding.view(embedding.shape[0], embedding.shape[1], -1)
 
-        # Cat embeddings and action (B, 4, 2048) + (B, 4, 64) + (B, 4, 64) => (B, 4, 2176)
+        # Cat embeddings and action (B, 4, 8192) + (B, 4, speed_chn) + (B, 4, action_chn) =>
+        # (B, 4, 8192 + speed_chn + action_chn)
         action_emb = torch.cat((vis_embedding, action_cod, speed_cod), dim=2)
 
-        # x_pack = pack_padded_sequence(action_emb, embedding_length, batch_first=True)
-        # h0, c0 = torch.randn(embedding.shape[0], embedding.shape[1], self.hidden_size), torch.randn(embedding.shape[0], embedding.shape[1], self.hidden_size)
         y, _ = self.lstm(action_emb)
-        # Output of lstm is stacked through all outputs (#outputs == #inputs), we get last output
-        # y (4*B, 512) => (B, 4*512, 1, 1) => (B, 512, 4, 4)
-        # y (4*B, 512) => (B, 512*4) => (B, 512*4*4)
+        # (B, 4, (2 if bidirectional else 1)*hidden_size)
         y = self.output_fc(y.reshape(embedding.shape[0], -1))
         # y (B, 512, 4, 4)
         return y.view(-1, embedding.shape[-3], embedding.shape[-2], embedding.shape[-1])

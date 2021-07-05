@@ -22,6 +22,7 @@ if __name__ == '__main__':
                                                                       'be loaded into memory before training. '
                                                                       'offline: the embeddings'
                                                                       'will be loaded lazily')
+    parser.add_argument('--bidirectional', action='store_true', help='Whether to use bidirectional LSTM or not.')
     parser.add_argument('--hidden-size', default=256, type=int, help='LSTM hidden size')
     parser.add_argument('--num-layers', default=2, type=int, help='LSTM number of hidden layers')
     parser.add_argument('--batch-size', default=32, type=int, help='Batch size')
