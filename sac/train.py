@@ -2,6 +2,7 @@
 import os
 import sys
 import time
+import numpy as np
 
 import cv2
 import torch
@@ -19,6 +20,22 @@ ROAD_OPTION_TO_NAME = {
     2: "Straight",
     3: "Lane Follow"
 }
+
+
+def action_proxy(act: np.ndarray) -> list:
+    """
+    Parse an action from two dimensions to three dimensions
+    """
+    acc = act[0]
+    steer = act[1]
+    # Convert acceleration to throttle and brake
+    if acc > 0:
+        throttle = np.clip(acc, 0, 1)
+        brake = 0
+    else:
+        throttle = 0
+        brake = np.clip(-acc, 0, 1)
+    return [throttle, brake, steer]
 
 
 class SACTrainer(object):
@@ -94,6 +111,9 @@ class SACTrainer(object):
                 with utils.eval_mode(self.agent):
                     action = self.agent.act(obs, sample=True)
 
+            # AGENT ACTION DIM PROXY: 2 -> 3
+            action = action_proxy(action)
+
             # run training update
             if self.step >= self.num_seed_steps:
                 self.agent.update(self.replay_buffer, self.step)
@@ -134,14 +154,21 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="SAC Trainer",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-i', '--input', required=True, default=None, type=str, help='path to hdf5 file')
-    parser.add_argument('-m', '--metadata', default=None, type=str, help='path to json file')
+    # encoder weight's
+    parser.add_argument('--vis-weights', default='../dataset/weights/best_model_1_validation_accuracy=-0.5557.pt',
+                        type=str, help="Path to visual encoder weight's")
+    parser.add_argument('--temp-weights', default='../dataset/weights/best_VanillaRNNEncoder.pth')
+
+    # in case of using behavioral cloning
+    parser.add_argument('-i', '--input', required=False, default=None, type=str, help='path to hdf5 file')
+    parser.add_argument('-m', '--metadata', required=False, default=None, type=str, help='path to json file')
     parser.add_argument('--debug', action='store_true', help='Whether or not visualize actor input')
     args = parser.parse_args()
 
     warnings.filterwarnings("ignore")
 
     # region: GENERAL PARAMETERS
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     action_dim = 2
     actor_hidden_dim = 512
     critic_hidden_dim = 512
@@ -160,30 +187,40 @@ if __name__ == '__main__':
     # region: init env
     print(colored("[*] Initializing models", "white"))
     visual = ADEncoder(backbone='efficientnet-b5')
-    temp = VanillaRNNEncoder()
+    visual.load_state_dict(torch.load(args.vis_weights))
+    visual.to(device)
     visual.freeze()
+
+    temp = VanillaRNNEncoder()
+    # temp.load_state_dict(torch.load(args.temp_weights))
+    temp.to(device)
     temp.freeze()
     print(colored("[+] Encoder models were initialized and loaded successfully!", "green"))
 
     print(colored("[*] Initializing environment", "white"))
     env_params = {
-        'number_of_vehicles': 0,
-        'number_of_walkers': 0,
-        'display_size': 256,  # screen size of bird-eye render
+        # carla connection parameters+
+        'host': 'localhost',
+        'port': 2000,  # connection port
+        'town': 'Town03',  # which town to simulate
+
+        # simulation parameters
+        'verbose': False,
+        'vehicles': 100,  # number of vehicles in the simulation
+        'walkers': 0,     # number of walkers in the simulation
+        'obs_size': 288,  # sensor width and height
         'max_past_step': 1,  # the number of past steps to draw
-        'dt': 0.05,  # time interval between two frames
+        'dt': 0.025,  # time interval between two frames
         'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
         'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
         'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
-        'port': 2000,  # connection port
-        'town': 'Town01',  # which town to simulate
-        'max_time_episode': 100,  # maximum timesteps per episode
+        'max_time_episode': 1000,  # maximum timesteps per episode
         'max_waypt': 12,  # maximum number of waypoints
         'd_behind': 12,  # distance behind the ego vehicle (meter)
         'out_lane_thres': 2.0,  # threshold for out of lane
         'desired_speed': 6,  # desired speed (m/s)
+        'speed_reduction_at_intersection': 0.75,
         'max_ego_spawn_times': 200,  # maximum times to spawn ego vehicle
-        'reduction_at_intersection': 0.75
     }
     carla_raw_env = CarlaEnv(env_params)
     carla_processed_env = EncodeWrapper(carla_raw_env, visual, temp, debug=args.debug)
