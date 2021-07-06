@@ -33,6 +33,8 @@ if __name__ == '__main__':
     # SAC parameters
     rl_group = parser.add_argument_group('RL Config')
     rl_group.add_argument('--num-seed', default=2000, type=int, help='Number of seed steps before starting to train.')
+    rl_group.add_argument('--control-frequency', default=4, type=int, help='Number of times that a control signal'
+                                                                           'is going to be repeated to the environment')
     rl_group.add_argument('--max-episode-steps', default=200, type=int, help='Maximum number of steps per episode.')
     rl_group.add_argument('--num-eval-episodes', default=5, type=int, help='Number of evaluation episodes.')
     rl_group.add_argument('--num-train-steps', default=1e6, type=int, help='Number of training steps.')
@@ -116,7 +118,8 @@ if __name__ == '__main__':
         'max_ego_spawn_times': 200,  # maximum times to spawn ego vehicle
     }
     carla_raw_env = CarlaEnv(env_params)
-    carla_processed_env = EncodeWrapper(carla_raw_env, visual, temp, debug=args.debug)
+    carla_processed_env = EncodeWrapper(carla_raw_env, visual, temp, max_steps=args.max_episode_steps,
+                                        action_frequency=args.control_frequency, debug=args.debug)
     carla_processed_env.reset()
     print(colored("[+] Environment ready!", "green"))
     # endregion
@@ -171,4 +174,5 @@ if __name__ == '__main__':
     try:
         trainer.run()
     finally:
+        print(colored("Stopping", "red"))
         trainer.end()

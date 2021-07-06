@@ -14,8 +14,12 @@ class EncodeWrapper(Wrapper):
                  env: CarlaEnv,
                  visual_encoder: torch.nn.Module,
                  temporal_encoder: torch.nn.Module,
+                 max_steps: int = 200,
+                 action_frequency: int = 4,
                  device: str = 'cuda',
                  debug: bool = True):
+        self._action_frequency = action_frequency
+        env.max_steps = max_steps * action_frequency
         super(EncodeWrapper, self).__init__(env)
 
         self._device = device
@@ -28,7 +32,6 @@ class EncodeWrapper(Wrapper):
         self.step_ = 0
         self._visual_buffer = deque(maxlen=4)
         self._last_speed = None
-        self.max_episode_steps = 1000
         self._debug = debug
 
     def _format_observation(self, observation: Dict[str, np.ndarray]):
@@ -98,7 +101,7 @@ class EncodeWrapper(Wrapper):
 
     def step(self, action: list):
         # repeat the action 4 times
-        for _ in range(3):
+        for _ in range(self._action_frequency - 1):
             self._step(action)
         return self._step(action)
 
