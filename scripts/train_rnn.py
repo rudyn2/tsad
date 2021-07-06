@@ -99,7 +99,7 @@ if __name__ == '__main__':
         for i, (embeddings, embeddings_length, actions, speeds, embeddings_label) in enumerate(train_loader):
             embeddings, embeddings_label, actions, speeds = embeddings.to(device), embeddings_label.to(device), actions.to(
                 device), speeds.to(device)
-            pred = model(embeddings, actions, speeds, embeddings_length)
+            pred = model(embeddings, actions, speeds)
 
             optimizer.zero_grad()
             loss = mse_loss(pred, embeddings_label)
@@ -122,7 +122,7 @@ if __name__ == '__main__':
             with torch.no_grad():
                 embeddings, embeddings_label, actions, speeds = embeddings.to(device), embeddings_label.to(device), actions.to(
                     device), speeds.to(device)
-                pred = model(embeddings, actions, speeds, embeddings_length)
+                pred = model(embeddings, actions, speeds)
                 loss = mse_loss(pred, embeddings_label)
                 val_total_loss += loss.item()
 

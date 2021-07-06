@@ -79,12 +79,12 @@ if __name__ == '__main__':
     visual.eval()
     visual.freeze()
 
-    temp = VanillaRNNEncoder(num_layers=3,
-                             hidden_size=2048,
+    temp = VanillaRNNEncoder(num_layers=4,
+                             hidden_size=1024,
                              action__chn=256,
                              speed_chn=256,
                              bidirectional=True)
-    # temp.load_state_dict(torch.load(args.temp_weights))
+    temp.load_state_dict(torch.load(args.temp_weights))
     temp.to(device)
     temp.eval()
     temp.freeze()
