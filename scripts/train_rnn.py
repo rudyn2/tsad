@@ -135,7 +135,7 @@ if __name__ == '__main__':
             best_val_loss = avg_val_loss
             model_name = f"best_{model.__class__.__name__}.pth"
             torch.save(model.state_dict(), model_name)
-            # wandb.save(model_name)
+            wandb.save(model_name)
             tag = '*'
 
         sys.stdout.write(f", Validation loss: {avg_val_loss:.5f}")

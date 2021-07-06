@@ -1,156 +1,20 @@
-#!/usr/bin/env python3
-import os
-import sys
-import time
-import numpy as np
-
-import cv2
-import torch
-
-import sac.utils as utils
-from models.carla_wrapper import EncodeWrapper
-from replay_buffer import MixedReplayBuffer
-from sac.agent.sac import SACAgent
 from termcolor import colored
-from sac.rl_logger import RLLogger
-
-ROAD_OPTION_TO_NAME = {
-    0: "Left",
-    1: "Right",
-    2: "Straight",
-    3: "Lane Follow"
-}
-
-
-def action_proxy(act: np.ndarray) -> list:
-    """
-    Parse an action from two dimensions to three dimensions
-    """
-    acc = act[0]
-    steer = act[1]
-    # Convert acceleration to throttle and brake
-    if acc > 0:
-        throttle = np.clip(acc, 0, 1)
-        brake = 0
-    else:
-        throttle = 0
-        brake = np.clip(-acc, 0, 1)
-    return [throttle, brake, steer]
-
-
-class SACTrainer(object):
-    def __init__(self,
-                 env: EncodeWrapper,
-                 agent: SACAgent,
-                 buffer: MixedReplayBuffer,
-                 **kwargs):
-        self.work_dir = os.getcwd()
-        print(f'workspace: {self.work_dir}')
-
-        # save some training configurations
-        utils.set_seed_everywhere(kwargs["seed"])
-        self.device = torch.device(kwargs["device"])
-        self.num_eval_episodes = kwargs["num_eval_episodes"]
-        self.num_train_steps = kwargs["num_train_steps"]
-        self.num_seed_steps = kwargs["num_seed_steps"]
-        self.eval_frequency = kwargs["eval_frequency"]
-
-        self.env = env
-        self.agent = agent
-        self.replay_buffer = buffer
-        self.logger = RLLogger()
-
-        self.step = 0
-
-    def evaluate(self):
-        average_episode_reward = 0
-        for episode in range(self.num_eval_episodes):
-            obs = self.env.reset()
-            self.agent.reset()
-            done = False
-            episode_reward = 0
-            while not done:
-                with utils.eval_mode(self.agent):
-                    action = self.agent.act(obs, sample=False)
-                obs, reward, done, _ = self.env.step(action)
-                episode_reward += reward
-
-            average_episode_reward += episode_reward
-        average_episode_reward /= self.num_eval_episodes
-        wandb.log({'eval/episode_reward': average_episode_reward})
-
-    def run(self):
-        episode, episode_reward, done, episode_step = 0, 0, 0, True
-        obs = self.env.reset()
-        start_time = time.time()
-        while self.step < self.num_train_steps:
-            if done:
-                if self.step > 0:
-                    wandb.log({'train/duration': time.time() - start_time})
-                    start_time = time.time()
-
-                # evaluate agent periodically
-                if self.step > 0 and self.step % self.eval_frequency == 0:
-                    wandb.log({'eval/episode': episode})
-                    self.evaluate()
-
-                wandb.log({'train/episode_reward': episode_reward})
-
-                print("\nResetting")
-                obs = self.env.reset()
-                self.agent.reset()
-                episode_reward = 0
-                episode_step = 0
-                episode += 1
-                wandb.log({'train/episode': episode})
-
-            # sample action for data collection
-            if self.step < self.num_seed_steps:
-                action = self.env.action_space.sample()
-            else:
-                with utils.eval_mode(self.agent):
-                    action = self.agent.act(obs, sample=True)
-
-            # AGENT ACTION DIM PROXY: 2 -> 3
-            action = action_proxy(action)
-
-            # run training update
-            if self.step >= self.num_seed_steps:
-                self.agent.update(self.replay_buffer, self.step)
-
-            next_obs, reward, done, _ = self.env.step(action)
-            not_done = 1 - float(done)
-            episode_reward += reward
-
-            self.replay_buffer.add(obs, action, reward, next_obs, not_done)
-
-            obs = next_obs
-            episode_step += 1
-            self.step += 1
-
-            self.logger.log(f"({self.step}/{self.num_train_steps:.0f}), "
-                            f"[{episode}:{episode_step}:{ROAD_OPTION_TO_NAME[obs['hlc']]}]| "
-                            f"reward: {reward:.2f}, acc: {action[0]:.3f}, steer: {action[1]:.3f}, done: {done}")
-
-            sys.stdout.write("\r")
-            sys.stdout.write(f"Training step: {self.step}/{self.num_train_steps}")
-
-    def end(self):
-        self.env.reset()
-        cv2.destroyAllWindows()
-        self.logger.close()
+import warnings
+import wandb
+import torch
+from gym_carla.envs.carla_env import CarlaEnv
+from models.ADEncoder import ADEncoder
+from models.TemporalEncoder import VanillaRNNEncoder
+from sac.agent.sac import SACAgent
+from sac.agent.actor import DiagGaussianActor
+from sac.agent.critic import DoubleQCritic
+from sac.trainer import SACTrainer
+from models.carla_wrapper import EncodeWrapper
+from sac.replay_buffer import MixedReplayBuffer
+import argparse
 
 
 if __name__ == '__main__':
-    import warnings
-    import wandb
-    from gym_carla.envs.carla_env import CarlaEnv
-    from models.ADEncoder import ADEncoder
-    from models.TemporalEncoder import VanillaRNNEncoder
-    from sac.agent.sac import SACAgent
-    from sac.agent.actor import DiagGaussianActor
-    from sac.agent.critic import DoubleQCritic
-    import argparse
 
     parser = argparse.ArgumentParser(description="SAC Trainer",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -174,10 +38,7 @@ if __name__ == '__main__':
     critic_hidden_dim = 512
 
     online_memory_size = 512
-    offline_dataset_path = {
-        "hdf5": args.input,
-        "json": args.metadata
-    }
+    offline_dataset_path = None
     # endregion
 
     # region: init wandb
@@ -202,19 +63,19 @@ if __name__ == '__main__':
         # carla connection parameters+
         'host': 'localhost',
         'port': 2000,  # connection port
-        'town': 'Town03',  # which town to simulate
+        'town': 'Town01',  # which town to simulate
 
         # simulation parameters
         'verbose': False,
         'vehicles': 100,  # number of vehicles in the simulation
-        'walkers': 0,     # number of walkers in the simulation
+        'walkers': 0,  # number of walkers in the simulation
         'obs_size': 288,  # sensor width and height
         'max_past_step': 1,  # the number of past steps to draw
         'dt': 0.025,  # time interval between two frames
         'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
         'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
         'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
-        'max_time_episode': 1000,  # maximum timesteps per episode
+        'max_time_episode': 400,  # maximum timesteps per episode
         'max_waypt': 12,  # maximum number of waypoints
         'd_behind': 12,  # distance behind the ego vehicle (meter)
         'out_lane_thres': 2.0,  # threshold for out of lane
@@ -247,9 +108,14 @@ if __name__ == '__main__':
 
     # region: init buffer
     print(colored("[*] Initializing Mixed Replay Buffer", "white"))
-    mixed_replay_buffer = MixedReplayBuffer(online_memory_size)
-    # offline_buffer_hdf5=offline_dataset_path["hdf5"],
-    # offline_buffer_json=offline_dataset_path["json"])
+    if offline_dataset_path:
+        print(colored("Full DRL mode"))
+        mixed_replay_buffer = MixedReplayBuffer(online_memory_size,
+                                                offline_buffer_hdf5=str(offline_dataset_path) + '.hdf5',
+                                                offline_buffer_json=str(offline_dataset_path) + '.json')
+    else:
+        print(colored("BC + DRL mode"))
+        mixed_replay_buffer = MixedReplayBuffer(online_memory_size)
     print(colored("[*] Initializing Mixed Replay Buffer", "green"))
     # endregion
 
@@ -257,10 +123,10 @@ if __name__ == '__main__':
         "device": "cuda",
         "seed": 42,
         "log_save_tb": True,
-        "num_eval_episodes": 5,
-        "num_train_steps": 1e6,
-        "eval_frequency": 10000,
-        "num_seed_steps": 200
+        "num_eval_episodes": 5,     # number of episodes used for evaluation
+        "num_train_steps": 1e6,     # number of training steps
+        "eval_frequency": 10000,    # number of steps required for evaluation
+        "num_seed_steps": 200   # number of steps before starting to update the models
     }
     print(colored("Training", "white"))
     trainer = SACTrainer(env=carla_processed_env,
