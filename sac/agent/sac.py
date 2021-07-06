@@ -31,6 +31,7 @@ class SACAgent(Agent):
                  actor_update_frequency: int = 1,
                  critic_target_update_frequency: int = 2,
                  batch_size: int = 1024,
+                 offline_proportion: float = 0.25,
                  learnable_temperature: bool = True):
         super().__init__()
 
@@ -42,6 +43,7 @@ class SACAgent(Agent):
         self.critic_target_update_frequency = critic_target_update_frequency
         self.batch_size = batch_size
         self.learnable_temperature = learnable_temperature
+        self.offline_proportion = offline_proportion
 
         # store actor and critic
         self.critic = critic
@@ -155,7 +157,7 @@ class SACAgent(Agent):
             self.log_alpha_optimizer.step()
 
     def update(self, replay_buffer, step):
-        offline_samples, online_samples = replay_buffer.sample(self.batch_size)
+        offline_samples, online_samples = replay_buffer.sample(self.batch_size, self.offline_proportion)
 
         # if there aren't enough samples, skip this update until the replay buffer is bigger
         if len(online_samples) == 0 and len(offline_samples) == 0:

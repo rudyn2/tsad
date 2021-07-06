@@ -154,5 +154,5 @@ dependencies:
     - smmap==4.0.0
     - subprocess32==3.5.4
     - tqdm==4.60.0
-    - wandb==0.10.27
+    - wandb==0.10.31
 prefix: /home/rudy/miniconda3/envs/tsad
