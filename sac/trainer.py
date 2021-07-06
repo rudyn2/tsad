@@ -128,9 +128,12 @@ class SACTrainer(object):
             episode_step += 1
             self.step += 1
 
-            self.logger.log(f"({self.step}/{self.num_train_steps:.0f}), "
+            self.logger.log(f"[{'seed' if self.step < self.num_seed_steps else 'train'}]"
+                            f"({(self.step if self.step <= 1000 else self.step/1000):.2f}"
+                            f"{'k' if self.step > 1000 else ''}/"
+                            f"{self.num_train_steps/1000:.2f}k), "
                             f"[{episode}:{episode_step}:{ROAD_OPTION_TO_NAME[obs['hlc']]}]| "
-                            f"reward: {reward:.2f}, acc: {action[0]:.3f}, steer: {action[1]:.3f}, done: {done}")
+                            f"rew={reward:.2f}, acc={action[0]:.3f}, steer={action[1]:.3f}, done={done}")
 
             sys.stdout.write("\r")
             sys.stdout.write(f"Training step: {self.step}/{self.num_train_steps}")
