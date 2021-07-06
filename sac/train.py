@@ -21,7 +21,7 @@ if __name__ == '__main__':
     # encoder weight's
     parser.add_argument('--vis-weights', default='../dataset/weights/best_model_1_validation_accuracy=-0.5557.pt',
                         type=str, help="Path to visual encoder weight's")
-    parser.add_argument('--temp-weights', default='../dataset/weights/best_VanillaRNNEncoder.pth')
+    parser.add_argument('--temp-weights', default='../dataset/weights/best_VanillaRNNEncoder(2).pth')
 
     # in case of using behavioral cloning
     parser.add_argument('-i', '--input', required=False, default=None, type=str, help='path to hdf5 file')
@@ -50,11 +50,17 @@ if __name__ == '__main__':
     visual = ADEncoder(backbone='efficientnet-b5')
     visual.load_state_dict(torch.load(args.vis_weights))
     visual.to(device)
+    visual.eval()
     visual.freeze()
 
-    temp = VanillaRNNEncoder()
-    # temp.load_state_dict(torch.load(args.temp_weights))
+    temp = VanillaRNNEncoder(num_layers=3,
+                             hidden_size=2048,
+                             action__chn=256,
+                             speed_chn=256,
+                             bidirectional=True)
+    temp.load_state_dict(torch.load(args.temp_weights))
     temp.to(device)
+    temp.eval()
     temp.freeze()
     print(colored("[+] Encoder models were initialized and loaded successfully!", "green"))
 
@@ -75,7 +81,7 @@ if __name__ == '__main__':
         'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
         'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
         'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
-        'max_time_episode': 400,  # maximum timesteps per episode
+        'max_time_episode': 200,  # maximum timesteps per episode
         'max_waypt': 12,  # maximum number of waypoints
         'd_behind': 12,  # distance behind the ego vehicle (meter)
         'out_lane_thres': 2.0,  # threshold for out of lane
