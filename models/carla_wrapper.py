@@ -65,9 +65,9 @@ class EncodeWrapper(Wrapper):
 
         # neutral step to begin
         # this is needed to include the temporal encoding
-        return self.step([0, 0, 0])[0]
+        return self._step([0, 0, 0])[0]
 
-    def step(self, action: list) -> Tuple[Dict, float, bool, dict]:
+    def _step(self, action: list) -> Tuple[Dict, float, bool, dict]:
         """
         observation (object): agent's observation of the current environment
         reward (float) : amount of reward returned after previous action
@@ -96,6 +96,12 @@ class EncodeWrapper(Wrapper):
 
         return obs, reward, done, info
 
+    def step(self, action: list):
+        # repeat the action 4 times
+        for _ in range(3):
+            self._step(action)
+        return self._step(action)
+
     def create_temporal_encoding(self, action: list) -> Tensor:
         """
         Given the last 4 simulation steps, it creates an temporal encoding using provided RNN. In order to achieve that,
@@ -108,7 +114,6 @@ class EncodeWrapper(Wrapper):
         stacked_frames = stacked_frames.to(self._device)
         action = torch.tensor(action, device=self._device).unsqueeze(0).float()
         speed = torch.tensor(self._last_speed, device=self._device).unsqueeze(0).float()
-
         temporal_encoding = self._temporal_encoder.forward(stacked_frames, action, speed)
         return temporal_encoding
 
