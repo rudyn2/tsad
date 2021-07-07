@@ -51,8 +51,8 @@ if __name__ == '__main__':
     buffer_group.add_argument('--bc-proportion', default=0.25, type=float,
                               help='Batch size proportion of offline samples that are going to be used for '
                                    'behavioral cloning.')
-    buffer_group.add_argument('--online-memory-size', default=512, type=int, help='Number of steps to be stored in the'
-                                                                                  'online buffer')
+    buffer_group.add_argument('--online-memory-size', default=8192, type=int, help='Number of steps to be stored in the'
+                                                                                   'online buffer')
 
     # in case of using behavioral cloning
     bc_group = parser.add_argument_group('Behavioral cloning config')

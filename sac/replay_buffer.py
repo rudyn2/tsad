@@ -117,7 +117,7 @@ class MixedReplayBuffer(object):
             for run_id in tqdm(list(f.keys())[:5], "Loading dataset"):
                 episode_metadata = metadata[run_id]
                 steps = list(f[run_id].keys())
-                steps = sorted(steps)   # to be sure that they are in order
+                steps = sorted(steps)  # to be sure that they are in order
                 offline_buffer.memory_size += len(steps)
                 for idx in range(len(steps) - 1):
                     step, next_step = steps[idx], steps[idx + 1]
@@ -130,18 +130,20 @@ class MixedReplayBuffer(object):
     def _get_transition(self, h5py_group: h5py.File, metadata_json: dict, step: str, next_step: str) \
             -> Tuple[Dict[str, np.ndarray], np.ndarray, float, Dict[str, np.ndarray]]:
 
-        visual, next_visual = np.array(h5py_group[step]), np.array(h5py_group[step])
+        encoding, next_encoding = np.array(h5py_group[step]), np.array(h5py_group[step])
         step_metadata, next_step_metadata = metadata_json[step], metadata_json[next_step]
-        state = np.array([float(step_metadata['speed']),
-                          float(self.HLC_TO_NUMBER[step_metadata['command']])])
-        next_state = np.array([float(next_step_metadata['speed']),
-                               float(self.HLC_TO_NUMBER[next_step_metadata['command']])])
-        observation = dict(visual=visual, state=state)
-        next_observation = dict(visual=next_visual, state=next_state)
+        step_speed = np.array([float(step_metadata['speed_x']), float(step_metadata['speed_y']),
+                               float(step_metadata['speed_z'])])
+        step_command = int(self.HLC_TO_NUMBER[step_metadata['command']])
+        next_step_speed = np.array([float(next_step_metadata['speed_x']), float(next_step_metadata['speed_y']),
+                                    float(next_step_metadata['speed_z'])])
+        next_step_command = int(self.HLC_TO_NUMBER[next_step_metadata['command']])
+        observation = dict(encoding=encoding, speed=step_speed, hlc=step_command)
+        next_observation = dict(encoding=next_encoding, speed=next_step_speed, hlc=next_step_command)
         reward = calc_reward(step_metadata)
-        action = np.array([float(step_metadata['control']['steer']),
-                           float(step_metadata['control']['throttle']),
-                           float(step_metadata['control']['brake'])])
+        action = np.array([float(step_metadata['control']['throttle']),
+                           float(step_metadata['control']['brake']),
+                           float(step_metadata['control']['steer'])])
         return observation, action, reward, next_observation
 
     def sample(self, batch_size: int, offline: float = 0.25) -> Tuple[list, list]:
@@ -157,11 +159,13 @@ class MixedReplayBuffer(object):
         if self._offline_buffer:
             offline_samples = self._offline_buffer.unpacked_sample(offline_batch_size)
 
-        if len(offline_samples) == 0:   # then either the buffer doesn't exists or doesn't have enough samples
+        if len(offline_samples) == 0:  # then either the buffer doesn't exists or doesn't have enough samples
             # so, we try to pull all of them from the online buffer
             online_samples = self._online_buffer.unpacked_sample(batch_size)
-        else:   # if we have samples from the offline buffer, then we just get the missing ones
+        else:  # if we have samples from the offline buffer, then we just get the missing ones
             online_samples = self._online_buffer.unpacked_sample(online_batch_size)
+            if len(online_samples) == 0:  # then we don't have enough samples in the online buffer
+                online_samples = self._offline_buffer.unpacked_sample(online_batch_size)
 
         # if it couldn't collect enough samples, return an empty list
         if len(online_samples) + len(offline_samples) < batch_size:
@@ -177,6 +181,6 @@ class MixedReplayBuffer(object):
 
 if __name__ == '__main__':
     mixed_replay_buffer = MixedReplayBuffer(512,
-                                            offline_buffer_hdf5='../data/embeddings_noflat.hdf5',
-                                            offline_buffer_json='../data/carla_dataset.json')
+                                            offline_buffer_hdf5='../dataset/encodings/encodings.hdf5',
+                                            offline_buffer_json='../dataset/embeddings/clean_1.json')
     offline, online = mixed_replay_buffer.sample(batch_size=512, offline=0.7)

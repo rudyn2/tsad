@@ -169,8 +169,7 @@ class SACAgent(Agent):
         if len(offline_samples) > 0:
             offline_obs, offline_act, _, _, _ = list(zip(*offline_samples))     # expert experience
 
-        wandb.log({'train/batch_reward': np.array(reward).mean()
-                   })
+        wandb.log({'train/batch_reward': np.array(reward).mean()})
 
         self.update_critic(obs, action, reward, next_obs, not_done)
 

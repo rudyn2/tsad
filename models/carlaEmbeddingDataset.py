@@ -21,11 +21,12 @@ class PadSequence:
 
 
 class CarlaEmbeddingDataset(Dataset):
-    def __init__(self, embeddings_path: str, json_path: str):
+    def __init__(self, embeddings_path: str, json_path: str, provide_ts: bool = False):
         self._path = embeddings_path
         self.json_path = json_path
         self._metadata = None
         self._timestamps = None
+        self._provide_ts = provide_ts
         self._timestamp2run = {}
 
         self.read_metadata()
@@ -40,7 +41,7 @@ class CarlaEmbeddingDataset(Dataset):
         self._timestamps = list(self._timestamp2run.keys())
 
         # just some episodes
-        # self._timestamps = self._timestamps[:2000]
+        # self._timestamps = self._timestamps[:1000]
         # filtered_metadata = {}
         # for t in self._timestamps:
         #     run_id = self._timestamp2run[t]
@@ -71,6 +72,8 @@ class CarlaEmbeddingDataset(Dataset):
             metadata = self._metadata[run_id][windows_ts[-2]]
             action = torch.tensor([control['steer'], control['throttle'], control['brake']])
             speed = torch.tensor([metadata['speed_x'], metadata['speed_y'], metadata['speed_y']])
+            if self._provide_ts:
+                return torch.tensor(embeddings[:-1]), action, speed, torch.tensor(embeddings[-1]), (run_id, windows_ts[-2])
             return torch.tensor(embeddings[:-1]), action, speed, torch.tensor(embeddings[-1])
 
     def __len__(self):
@@ -78,17 +81,22 @@ class CarlaEmbeddingDataset(Dataset):
 
 
 class CarlaOnlineEmbeddingDataset(Dataset):
-    def __init__(self, embeddings_path: str, json_path: str):
+    def __init__(self, embeddings_path: str, json_path: str, provide_ts: bool = False):
         super(Dataset, self).__init__()
-        self._source_dataset = CarlaEmbeddingDataset(embeddings_path, json_path)
+        self._source_dataset = CarlaEmbeddingDataset(embeddings_path, json_path, provide_ts)
         org_length = self._source_dataset
+        self._provide_ts = provide_ts
         self._sequences = [None] * len(org_length)
         self._actions = [None] * len(org_length)
         self._speeds = [None] * len(org_length)
         self._labels = [None] * len(org_length)
+        if self._provide_ts:
+            self._ts = [None] * len(org_length)
         self._load_all()
 
     def __getitem__(self, item):
+        if self._provide_ts:
+            return self._sequences[item], self._actions[item], self._speeds[item], self._labels[item], self._ts[item]
         return self._sequences[item], self._actions[item], self._speeds[item], self._labels[item]
 
     def __len__(self):
@@ -96,7 +104,12 @@ class CarlaOnlineEmbeddingDataset(Dataset):
 
     def _load_all(self):
         for i in tqdm(range(len(self._source_dataset)), "Loading dataset"):
-            s, a, sps, s1 = self._source_dataset[i]
+            if self._provide_ts:
+                s, a, sps, s1, ts = self._source_dataset[i]
+                self._ts[i] = ts
+            else:
+                s, a, sps, s1 = self._source_dataset[i]
+
             self._sequences[i] = s
             self._actions[i] = a
             self._speeds[i] = sps

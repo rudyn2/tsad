@@ -16,7 +16,7 @@ from models.carlaDatasetTransform import CarlaDatasetTransform
 
 
 class SubDataset(Dataset):
-    def __init__(self, original_dataset: CarlaDatasetSimple, indexes: list):
+    def __init__(self, original_dataset: CarlaDatasetTransform, indexes: list):
         self._dataset = original_dataset
         self._indexes = indexes
 
@@ -42,7 +42,7 @@ class HDF5EmbeddingSaver:
 
 class Extractor:
 
-    def __init__(self, model: ADEncoder, dataset: CarlaDatasetSimple, output_path: str, device: str = 'cuda'):
+    def __init__(self, model: ADEncoder, dataset: CarlaDatasetTransform, output_path: str, device: str = 'cuda'):
         self._model = model
         self._dataset = dataset
         self.__device = device
