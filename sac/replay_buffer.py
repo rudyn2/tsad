@@ -2,17 +2,9 @@ import json
 
 import h5py
 import numpy as np
-import torch
 from tqdm import tqdm
 from sac.utils import calc_reward
 from typing import Tuple, Dict
-
-
-class StateObj(object):
-    def __init__(self, visual_embedding: torch.Tensor, speed: float, hlc: str):
-        self.visual_embedding = visual_embedding
-        self.speed = speed
-        self.hlc = hlc
 
 
 class ReplayMemoryFast:
