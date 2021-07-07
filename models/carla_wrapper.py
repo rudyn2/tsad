@@ -38,8 +38,8 @@ class EncodeWrapper(Wrapper):
         """
         Takes an observation of an rgb image and a depth map and returns a stacked torch tensor
         """
-        rgb = torch.tensor(observation['camera'])
-        depth = torch.tensor(observation['depth'])
+        rgb = torch.tensor(observation['camera'])[64:, :, :]
+        depth = torch.tensor(observation['depth'])[64:, :]
         x = np.concatenate((rgb, depth[:, :, np.newaxis]), axis=2)
         x = np.transpose(x, axes=[2, 0, 1])
         x = torch.tensor(x, device=self._device).unsqueeze(0).float()
