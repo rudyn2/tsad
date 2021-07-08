@@ -27,11 +27,16 @@ class SACAgent(Agent):
                  critic_lr: float = 1e-4,
                  alpha_lr: float = 1e-4,
                  actor_betas: tuple = (0.9, 0.999),
+                 actor_weight_decay: float = 4e-2,
                  critic_betas: tuple = (0.9, 0.999),
+                 critic_weight_decay: float = 4e-2,
                  alpha_betas: tuple = (0.9, 0.999),
                  actor_update_frequency: int = 1,
                  critic_target_update_frequency: int = 2,
                  batch_size: int = 1024,
+                 bc_loss_weight: float = 0.3,
+                 actor_loss_weight: float = 0.3,
+                 critic_loss_weight: float = 0.3,
                  offline_proportion: float = 0.25,
                  learnable_temperature: bool = True):
         super().__init__()
@@ -49,6 +54,7 @@ class SACAgent(Agent):
         # store actor and critic
         self.critic = critic
         self.critic_target = target_critic
+        # noinspection PyTypeChecker
         self.critic_target.load_state_dict(self.critic.state_dict())
         self.actor = actor
 
@@ -65,15 +71,20 @@ class SACAgent(Agent):
         # optimizers
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),
                                                 lr=actor_lr,
-                                                betas=actor_betas)
+                                                betas=actor_betas,
+                                                weight_decay=actor_weight_decay)
 
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(),
                                                  lr=critic_lr,
-                                                 betas=critic_betas)
+                                                 betas=critic_betas,
+                                                 weight_decay=critic_weight_decay)
 
         self.log_alpha_optimizer = torch.optim.Adam([self.log_alpha],
                                                     lr=alpha_lr,
                                                     betas=alpha_betas)
+        self.critic_loss_weight = critic_loss_weight
+        self.actor_loss_weight = actor_loss_weight
+        self.bc_loss_weight = bc_loss_weight
 
         self.train()
         self.critic_target.train()
@@ -125,7 +136,7 @@ class SACAgent(Agent):
 
         # get current Q estimates
         current_Q1, current_Q2 = self.critic(obs, torch.tensor(action, device=self.device).float())
-        critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
+        critic_loss = self.critic_loss_weight * (F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q))
         wandb.log({'train_critic/loss': critic_loss})
 
         # Optimize the critic
@@ -150,11 +161,11 @@ class SACAgent(Agent):
         actor_Q1, actor_Q2 = self.critic(obs, self.act_parser(action))
         actor_Q = torch.min(actor_Q1, actor_Q2)
 
-        sac_loss = (self.alpha.detach() * log_prob - actor_Q).mean()
+        sac_loss = self.actor_loss_weight * (self.alpha.detach() * log_prob - actor_Q).mean()
 
         bc_loss = None
         if log_prob_e is not None:
-            bc_loss = -log_prob_e.mean()
+            bc_loss = - (self.bc_loss_weight * log_prob_e).mean()
 
         wandb.log({'train_actor/sac_loss': sac_loss.item()})
         wandb.log({'train_actor/target_entropy': self.target_entropy})

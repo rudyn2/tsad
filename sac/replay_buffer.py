@@ -82,10 +82,15 @@ class MixedReplayBuffer(object):
         'LANEFOLLOW': 3
     }
 
-    def __init__(self, online_memory_size: int, offline_buffer_hdf5: str = None, offline_buffer_json: str = None):
+    def __init__(self,
+                 online_memory_size: int,
+                 reward_weights: tuple,
+                 offline_buffer_hdf5: str = None,
+                 offline_buffer_json: str = None):
         self._offline_buffer_hdf5_path = offline_buffer_hdf5
         self._offline_buffer_json_path = offline_buffer_json
         self._online_buffer = ReplayMemoryFast(online_memory_size)
+        self.reward_weights = reward_weights
 
         if self._offline_buffer_json_path and self._offline_buffer_hdf5_path:
             self._offline_buffer = self._load()
@@ -106,7 +111,7 @@ class MixedReplayBuffer(object):
         total_offline_steps = self._get_total_steps()
         offline_buffer = ReplayMemoryFast(memory_size=total_offline_steps)
         with h5py.File(self._offline_buffer_hdf5_path, "r") as f:
-            for run_id in tqdm(list(f.keys())[:5], "Loading dataset"):
+            for run_id in tqdm(list(f.keys()), "Loading dataset"):
                 episode_metadata = metadata[run_id]
                 steps = list(f[run_id].keys())
                 steps = sorted(steps)  # to be sure that they are in order
@@ -122,7 +127,7 @@ class MixedReplayBuffer(object):
     def _get_transition(self, h5py_group: h5py.File, metadata_json: dict, step: str, next_step: str) \
             -> Tuple[Dict[str, np.ndarray], np.ndarray, float, Dict[str, np.ndarray]]:
 
-        encoding, next_encoding = np.array(h5py_group[step]), np.array(h5py_group[step])
+        encoding, next_encoding = np.array(h5py_group[step]), np.array(h5py_group[next_step])
         step_metadata, next_step_metadata = metadata_json[step], metadata_json[next_step]
         step_speed = np.array([float(step_metadata['speed_x']), float(step_metadata['speed_y']),
                                float(step_metadata['speed_z'])])
@@ -132,7 +137,7 @@ class MixedReplayBuffer(object):
         next_step_command = int(self.HLC_TO_NUMBER[next_step_metadata['command']])
         observation = dict(encoding=encoding, speed=step_speed, hlc=step_command)
         next_observation = dict(encoding=next_encoding, speed=next_step_speed, hlc=next_step_command)
-        reward = calc_reward(step_metadata)
+        reward = calc_reward(step_metadata, reward_weights=self.reward_weights)
         action = np.array([float(step_metadata['control']['throttle']),
                            float(step_metadata['control']['brake']),
                            float(step_metadata['control']['steer'])])
@@ -173,6 +178,7 @@ class MixedReplayBuffer(object):
 
 if __name__ == '__main__':
     mixed_replay_buffer = MixedReplayBuffer(512,
+                                            reward_weights=(0.3, 0.3, 0.3),
                                             offline_buffer_hdf5='../dataset/encodings/encodings.hdf5',
                                             offline_buffer_json='../dataset/embeddings/clean_1.json')
     offline, online = mixed_replay_buffer.sample(batch_size=512, offline=0.7)

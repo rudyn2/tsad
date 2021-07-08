@@ -38,13 +38,28 @@ if __name__ == '__main__':
     rl_group.add_argument('--max-episode-steps', default=200, type=int, help='Maximum number of steps per episode.')
     rl_group.add_argument('--num-eval-episodes', default=5, type=int, help='Number of evaluation episodes.')
     rl_group.add_argument('--num-train-steps', default=1e6, type=int, help='Number of training steps.')
-    rl_group.add_argument('--eval-frequency', default=10000, type=int, help='number of steps between evaluations')
+    rl_group.add_argument('--eval-frequency', default=10000, type=int, help='number of steps between evaluations.')
+    rl_group.add_argument('--speed-reward-weight', default=0.3, type=float, help='Speed reward weight.')
+    rl_group.add_argument('--collision-reward-weight', default=0.3, type=float, help='Collision reward weight')
+    rl_group.add_argument('--lane-distance-reward-weight', default=0.3, type=float, help='Lane distance reward weight')
 
     models_parameters = parser.add_argument_group('Actor-Critic config')
     models_parameters.add_argument('--actor-hidden-dim', type=int, default=512, help='Size of hidden layer in the '
                                                                                      'actor model.')
     models_parameters.add_argument('--critic-hidden-dim', type=int, default=512, help='Size of hidden layer in the '
                                                                                       'critic model.')
+
+    loss_parameters = parser.add_argument_group('Loss parameters')
+    loss_parameters.add_argument('--bc-factor', type=float, default=0.3,
+                                 help='Behavioral cloning loss component weight.')
+    loss_parameters.add_argument('--critic-factor', type=float, default=0.3,
+                                 help='MSBE weight factors used for the critic loss.')
+    loss_parameters.add_argument('--actor-factor', type=float, default=0.3,
+                                 help='Actor SAC loss component weight.')
+    loss_parameters.add_argument('--actor-l2', type=float, default=4e-2,
+                                 help='L2 regularization for the actor model.')
+    loss_parameters.add_argument('--critic-l2', type=float, default=4e-2,
+                                 help='L2 regularization for the critic model.')
 
     buffer_group = parser.add_argument_group('Buffer config')
     buffer_group.add_argument('--batch-size', default=1024, type=int, help='Batch size.')
@@ -67,6 +82,8 @@ if __name__ == '__main__':
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     control_action_dim = 2
     input_action_dim = 3
+    # reward weights for speed, collision and lane distance
+    reward_weights = (args.speed_reward_weight, args.collision_reward_weight, args.lane_distance_reward_weight)
     offline_dataset_path = args.bc
     # endregion
 
@@ -107,6 +124,7 @@ if __name__ == '__main__':
         'obs_size': 288,  # sensor width and height
         'max_past_step': 1,  # the number of past steps to draw
         'dt': 0.025,  # time interval between two frames
+        'reward_weights': reward_weights,  # reward weights [speed, collision, lane distance]
         'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
         'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
         'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
@@ -140,7 +158,9 @@ if __name__ == '__main__':
                      target_critic=target_critic,
                      action_dim=control_action_dim,
                      batch_size=args.batch_size,
-                     offline_proportion=args.bc_proportion)
+                     offline_proportion=args.bc_proportion,
+                     actor_weight_decay=args.actor_l2,
+                     critic_weight_decay=args.critic_l2)
     print(colored("[*] SAC Agent is ready!", "green"))
     # endregion
 
@@ -149,12 +169,14 @@ if __name__ == '__main__':
     if offline_dataset_path:
         print(colored("BC + RL mode"))
         mixed_replay_buffer = MixedReplayBuffer(args.online_memory_size,
+                                                reward_weights=reward_weights,
                                                 offline_buffer_hdf5=str(offline_dataset_path) + '.hdf5',
                                                 offline_buffer_json=str(offline_dataset_path) + '.json')
     else:
         print(colored("Full DRL mode"))
-        mixed_replay_buffer = MixedReplayBuffer(args.online_memory_size)
-    print(colored("[*] Initializing Mixed Replay Buffer", "green"))
+        mixed_replay_buffer = MixedReplayBuffer(args.online_memory_size,
+                                                reward_weights=reward_weights)
+    print(colored("[*] The replay Buffer is ready!", "green"))
     # endregion
 
     train_params = {

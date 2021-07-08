@@ -56,7 +56,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Extract the visual+temp encodings using the precalculated embeddings"
                                                  "and a RNN encoder ",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--data', default='../dataset/embeddings/clean_1', type=str, help='Path to dataset folder')
+    parser.add_argument('--data', default='../dataset/embeddings/clean_2', type=str, help='Path to dataset folder')
     parser.add_argument('--output', default='encodings.hdf5', type=str,
                         help='Output path of generated embeddings')
     parser.add_argument('--weights', required=True, type=str, help='Path to model weights')
