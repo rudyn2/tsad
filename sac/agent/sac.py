@@ -94,13 +94,11 @@ class SACAgent(Agent):
         return utils.to_np(action[0])
 
     def act_parser(self, two_dim_action: torch.Tensor) -> torch.Tensor:
-        l = torch.tensor([[0, 0, -1.]])
-        u = torch.tensor([[1, 1., 1]])
         output = torch.zeros(two_dim_action.shape[0], 3)
         output[:, 0] = two_dim_action[:, 0]  # copy throttle-brake
         output[:, 1] = -two_dim_action[:, 0]  # copy throttle-brake
         output[:, 2] = two_dim_action[:, 1]  # copy steer
-        output = torch.max(torch.min(output, u), l)
+        output = torch.max(torch.min(output, torch.tensor([[1, 1., 1]])), torch.tensor([[0, 0, -1.]]))
         output = output.to(self.device)
         return output
 

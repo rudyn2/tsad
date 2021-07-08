@@ -165,38 +165,6 @@ class Critic(nn.Module):
         preds = preds.squeeze(-1)
         return preds
 
-#
-# class SACCustom(SACTorchModel):
-#     def __init__(self, *args, **kwargs):
-#         super(SACCustom, self).__init__(*args, **kwargs)
-#         self._actor = Actor(1024)
-#         self._obs_space = args[0]
-#
-#     def build_policy_model(self, obs_space, num_outputs, policy_model_config, name):
-#         model = Actor(1024)
-#         return model
-#
-#     def build_q_model(self, obs_space, action_space, num_outputs,
-#                       q_model_config, name):
-#         model = Critic(1024)
-#         return model
-#
-#     def get_policy_output(self, model_out: TensorType) -> TensorType:
-#         state = model_out["state"]
-#         speed = state[:, :2]
-#         hlc = state[:, 3]
-#         out = self.action_model(model_out["visual"], speed, hlc)
-#         return out
-#
-#     def policy_variables(self):
-#         return self.action_model.parameters()
-#
-#     def _get_q_value(self, model_out, actions, net):
-#         pass
-#
-#     def q_variables(self):
-#         return list(self.q_net.parameters()) + (list(self.twin_q_net.parameters()) if self.twin_q_net else [])
-
 
 if __name__ == '__main__':
     batch_size = 8
