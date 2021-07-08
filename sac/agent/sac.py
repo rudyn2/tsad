@@ -12,11 +12,12 @@ import wandb
 
 class SACAgent(Agent):
     """SAC algorithm."""
+
     def __init__(self,
                  actor: DiagGaussianActor,
                  critic: DoubleQCritic,
                  target_critic: DoubleQCritic,
-                 action_dim: int = 2,
+                 action_dim: int = 2,  # used only for target entropy definition
                  action_range: tuple = (-1, 1),
                  device: str = 'cuda',
                  discount: float = 0.99,
@@ -92,22 +93,41 @@ class SACAgent(Agent):
         action = action.clamp(*self.action_range)
         return utils.to_np(action[0])
 
+    def act_parser(self, two_dim_action: torch.Tensor) -> torch.Tensor:
+        output = torch.zeros(two_dim_action.shape[0], 3)
+        output[:, 0] = two_dim_action[:, 0]  # copy throttle-brake
+        output[:, 1] = two_dim_action[:, 0]  # copy throttle-brake
+        output[:, 2] = two_dim_action[:, 1]  # copy steer
+        output[output[:, 0] < 0, 0] = 0  # interpret negative values as brake, then throttle should be 0
+        output[output[:, 1] >= 0, 1] = 0  # interpret positive values as throttle, then brake should be 0
+        output[:, :2] = torch.abs(output[:, :2])
+        output = output.to(self.device)
+        return output
+
+    def act_parser_invert(self, three_dim_action: torch.Tensor) -> torch.Tensor:
+        output = torch.zeros(three_dim_action.shape[0], 2)
+        output[:, 0] = three_dim_action[:, 0] - three_dim_action[:, 1]
+        output[:, 1] = three_dim_action[:, 2]
+        output = torch.clamp(output, min=-1, max=1)
+        output = output.to(self.device)
+        return output.detach()
+
     def update_critic(self, obs, action, reward, next_obs, not_done):
-        reward = torch.tensor(reward, device=self.device)
+        reward = torch.tensor(reward, device=self.device).float()
         not_done = torch.tensor(not_done, device=self.device)
 
         dist = self.actor(next_obs)
         next_action = dist.rsample()
         log_prob = dist.log_prob(next_action).sum(-1, keepdim=False)
+        next_action = self.act_parser(next_action)
         target_Q1, target_Q2 = self.critic_target(next_obs, next_action)
         target_V = torch.min(target_Q1, target_Q2) - self.alpha.detach() * log_prob
         target_Q = reward + (not_done * self.discount * target_V)
         target_Q = target_Q.detach()
 
         # get current Q estimates
-        current_Q1, current_Q2 = self.critic(obs, action)
-        critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(
-            current_Q2, target_Q)
+        current_Q1, current_Q2 = self.critic(obs, torch.tensor(action, device=self.device).float())
+        critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
         wandb.log({'train_critic/loss': critic_loss})
 
         # Optimize the critic
@@ -117,40 +137,43 @@ class SACAgent(Agent):
 
     def update_actor_and_alpha(self, obs, obs_e, act_e):
         # behavioral cloning component
+        torch.autograd.set_detect_anomaly(True)
         log_prob_e = None
         if obs_e and act_e:
             dist_e = self.actor(obs_e)
-            log_prob_e = dist_e.log_prob(act_e).sum(-1, keepdim=True)
+            act_e = self.act_parser_invert(torch.tensor(act_e, device=self.device))
+            log_prob_e = dist_e.log_prob(torch.clamp(act_e, min=-1 + 1e-6, max=1.0 - 1e-6)).sum(-1, keepdim=True)
 
         # on-policy actor loss
         dist = self.actor(obs)
         action = dist.rsample()
         log_prob = dist.log_prob(action).sum(-1, keepdim=True)
 
-        actor_Q1, actor_Q2 = self.critic(obs, action)
+        actor_Q1, actor_Q2 = self.critic(obs, self.act_parser(action))
         actor_Q = torch.min(actor_Q1, actor_Q2)
 
-        if log_prob_e:
-            actor_loss = (self.alpha.detach() * log_prob - actor_Q + log_prob_e).mean()
-        else:
-            actor_loss = (self.alpha.detach() * log_prob - actor_Q).mean()
+        bc_loss = None
+        if log_prob_e is not None:
+            bc_loss = -log_prob_e.mean()
+        sac_loss = (self.alpha.detach() * log_prob - actor_Q).mean()
 
-        wandb.log({'train_actor/loss', actor_loss})
+        wandb.log({'train_actor/sac_loss': sac_loss.item()})
         wandb.log({'train_actor/target_entropy': self.target_entropy})
-        wandb.log({'train_actor/entropy', -log_prob.mean()})
+        wandb.log({'train_actor/entropy': -log_prob.mean().item()})
 
-        if log_prob_e:
-            wandb.log({'train_actor/bc_loss': -log_prob_e.mean()})
+        if log_prob_e is not None:
+            wandb.log({'train_actor/bc_loss': bc_loss.item()})
 
         # optimize the actor
         self.actor_optimizer.zero_grad()
-        actor_loss.backward()
+        sac_loss.backward()
+        if bc_loss is not None:
+            bc_loss.backward()
         self.actor_optimizer.step()
 
         if self.learnable_temperature:
             self.log_alpha_optimizer.zero_grad()
-            alpha_loss = (self.alpha *
-                          (-log_prob - self.target_entropy).detach()).mean()
+            alpha_loss = (self.alpha * (-log_prob - self.target_entropy).detach()).mean()
             wandb.log({'train_alpha/loss': alpha_loss})
             wandb.log({'train_alpha/value': self.alpha})
             alpha_loss.backward()
@@ -163,11 +186,11 @@ class SACAgent(Agent):
         if len(online_samples) == 0 and len(offline_samples) == 0:
             return
 
-        obs, action, reward, next_obs, not_done = online_samples            # online experience
+        obs, action, reward, next_obs, not_done = zip(*online_samples)  # online experience
 
         offline_obs, offline_act = None, None
         if len(offline_samples) > 0:
-            offline_obs, offline_act, _, _, _ = list(zip(*offline_samples))     # expert experience
+            offline_obs, offline_act, _, _, _ = list(zip(*offline_samples))  # expert experience
 
         wandb.log({'train/batch_reward': np.array(reward).mean()})
 

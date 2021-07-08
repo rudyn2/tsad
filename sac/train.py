@@ -65,7 +65,8 @@ if __name__ == '__main__':
 
     # region: GENERAL PARAMETERS
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    action_dim = 2
+    control_action_dim = 2
+    input_action_dim = 3
     offline_dataset_path = args.bc
     # endregion
 
@@ -126,18 +127,18 @@ if __name__ == '__main__':
 
     # region: init agent
     print(colored("[*] Initializing actor critic models", "white"))
-    actor = DiagGaussianActor(action_dim=action_dim,
+    actor = DiagGaussianActor(action_dim=control_action_dim,
                               hidden_dim=args.actor_hidden_dim,
                               log_std_bounds=(-3, 3)
                               )
-    critic = DoubleQCritic(action_dim=action_dim,
+    critic = DoubleQCritic(action_dim=input_action_dim,
                            hidden_dim=args.critic_hidden_dim)
-    target_critic = DoubleQCritic(action_dim=action_dim,
+    target_critic = DoubleQCritic(action_dim=input_action_dim,
                                   hidden_dim=args.critic_hidden_dim)
     agent = SACAgent(actor=actor,
                      critic=critic,
                      target_critic=target_critic,
-                     action_dim=action_dim,
+                     action_dim=control_action_dim,
                      batch_size=args.batch_size,
                      offline_proportion=args.bc_proportion)
     print(colored("[*] SAC Agent is ready!", "green"))
@@ -146,12 +147,12 @@ if __name__ == '__main__':
     # region: init buffer
     print(colored("[*] Initializing Mixed Replay Buffer", "white"))
     if offline_dataset_path:
-        print(colored("Full DRL mode"))
+        print(colored("BC + RL mode"))
         mixed_replay_buffer = MixedReplayBuffer(args.online_memory_size,
                                                 offline_buffer_hdf5=str(offline_dataset_path) + '.hdf5',
                                                 offline_buffer_json=str(offline_dataset_path) + '.json')
     else:
-        print(colored("BC + DRL mode"))
+        print(colored("Full DRL mode"))
         mixed_replay_buffer = MixedReplayBuffer(args.online_memory_size)
     print(colored("[*] Initializing Mixed Replay Buffer", "green"))
     # endregion

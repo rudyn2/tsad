@@ -89,12 +89,12 @@ class Actor(nn.Module):
 
         if isinstance(obs, list) or isinstance(obs, tuple):
             # if the observation is an iterable, then this method is going to be used for TRAINING in a batch-wise
-            encoding = torch.stack([o['encoding'].to(self._device) for o in obs], dim=0)
-            speed = torch.stack([o['speed'].to(self._device) for o in obs], dim=0).float()
-            hlc = torch.stack([o['hlc'].to(self._device) for o in obs], dim=0).float()
+            encoding = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0)
+            speed = torch.stack([torch.tensor(o['speed'], device=self._device) for o in obs], dim=0).float()
+            hlc = torch.stack([torch.tensor(o['hlc'], device=self._device) for o in obs], dim=0).float()
         elif isinstance(obs, dict):
             # if the observation is a dict, then this method is going to be used for ACTION SELECTION
-            encoding = obs['encoding'].unsqueeze(0).float()
+            encoding = torch.tensor(obs['encoding'], device=self._device).unsqueeze(0).float()
             speed = torch.tensor(obs['speed'], device=self._device).unsqueeze(0).float()
             hlc = torch.tensor(obs['hlc'], device=self._device).unsqueeze(0).float()
         else:
@@ -122,7 +122,7 @@ class Critic(nn.Module):
     Input: (s, a); s: (1024x4x4); a: (3,)
     """
 
-    def __init__(self, hidden_dim: int, action_dim: int, ):
+    def __init__(self, hidden_dim: int, action_dim: int):
         super(Critic, self).__init__()
         self._input_channels = 1024
         self._device = 'cuda'
@@ -139,16 +139,15 @@ class Critic(nn.Module):
         })
 
     def forward(self, obs: Union[list, tuple], action: Union[list, tuple, torch.Tensor]):
-        visual_embedding = torch.stack([o['visual'].to(self._device) for o in obs], dim=0)
-        state = torch.stack([o['state'].to(self._device) for o in obs], dim=0).float()
-        speed = state[:, :2]
-        hlc = state[:, 2]
+        encoding = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0).float()
+        speed = torch.stack([torch.tensor(o['speed'], device=self._device) for o in obs], dim=0).float()
+        hlc = torch.stack([torch.tensor(o['hlc'], device=self._device) for o in obs], dim=0).float()
 
         if isinstance(action, list) or isinstance(action, tuple):
             action = torch.stack([torch.tensor(a) for a in action]).to(self._device)
 
-        x = self.conv_reduction(visual_embedding)       # 1024x4x4 -> 1024
-        speed_embedding = self.speed_mlp(speed)         # 2, -> 128,
+        x = self.conv_reduction(encoding)       # 1024x4x4 -> 1024
+        speed_embedding = self.speed_mlp(speed)
         action_embedding = self.action_mlp(action)
         x_speed_action = torch.cat([x, speed_embedding, action_embedding], dim=1)  # [1024, 128, 128] -> 1280
 
