@@ -183,9 +183,9 @@ if __name__ == '__main__':
         "device": "cuda",
         "seed": 42,
         "log_save_tb": True,
-        "num_eval_episodes": 5,  # number of episodes used for evaluation
-        "num_train_steps": 1e6,  # number of training steps
-        "eval_frequency": 10000,  # number of steps required for evaluation
+        "num_eval_episodes": args.num_eval_episodes,  # number of episodes used for evaluation
+        "num_train_steps": args.num_train_steps,  # number of training steps
+        "eval_frequency": args.eval_frequency,  # number of steps required for evaluation
         "num_seed_steps": args.num_seed  # number of steps before starting to update the models
     }
     print(colored("Training", "white"))

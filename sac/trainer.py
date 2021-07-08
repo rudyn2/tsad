@@ -92,7 +92,9 @@ class SACTrainer(object):
                 # evaluate agent periodically
                 if self.step > 0 and self.step % self.eval_frequency == 0:
                     wandb.log({'eval/episode': episode})
+                    print("Evaluating...")
                     self.evaluate()
+                    print("Done!")
 
                 wandb.log({'train/episode_reward': episode_reward})
 
