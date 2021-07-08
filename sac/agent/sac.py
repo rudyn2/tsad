@@ -94,13 +94,13 @@ class SACAgent(Agent):
         return utils.to_np(action[0])
 
     def act_parser(self, two_dim_action: torch.Tensor) -> torch.Tensor:
+        l = torch.tensor([[0, 0, -1.]])
+        u = torch.tensor([[1, 1., 1]])
         output = torch.zeros(two_dim_action.shape[0], 3)
         output[:, 0] = two_dim_action[:, 0]  # copy throttle-brake
-        output[:, 1] = two_dim_action[:, 0]  # copy throttle-brake
+        output[:, 1] = -two_dim_action[:, 0]  # copy throttle-brake
         output[:, 2] = two_dim_action[:, 1]  # copy steer
-        output[output[:, 0] < 0, 0] = 0  # interpret negative values as brake, then throttle should be 0
-        output[output[:, 1] >= 0, 1] = 0  # interpret positive values as throttle, then brake should be 0
-        output[:, :2] = torch.abs(output[:, :2])
+        output = torch.max(torch.min(output, u), l)
         output = output.to(self.device)
         return output
 
@@ -152,10 +152,11 @@ class SACAgent(Agent):
         actor_Q1, actor_Q2 = self.critic(obs, self.act_parser(action))
         actor_Q = torch.min(actor_Q1, actor_Q2)
 
+        sac_loss = (self.alpha.detach() * log_prob - actor_Q).mean()
+
         bc_loss = None
         if log_prob_e is not None:
             bc_loss = -log_prob_e.mean()
-        sac_loss = (self.alpha.detach() * log_prob - actor_Q).mean()
 
         wandb.log({'train_actor/sac_loss': sac_loss.item()})
         wandb.log({'train_actor/target_entropy': self.target_entropy})
