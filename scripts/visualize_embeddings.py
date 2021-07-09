@@ -44,9 +44,8 @@ if __name__ == "__main__":
 
     parser.add_argument('--action-channels', default=128, type=int, help='Number of channels in action codification')
     parser.add_argument('--speed-channels', default=128, type=int, help='Number of channels in speed codification')
-    parser.add_argument('--state-channels', default=2048, type=int,
-                        help='Number of channels in state codification, only used in vanilla')
     parser.add_argument('--rnn-model', default='vanilla', type=str, help='Which rnn model use: "vanilla" or "convol"')
+    parser.add_argument('--bidirectional', action='store_true', help='Whether to use bidirectional LSTM or not.')
     args = parser.parse_args()
 
     if not os.path.exists(args.img_folder):
@@ -66,7 +65,7 @@ if __name__ == "__main__":
             hidden_size=args.hidden_size,
             action__chn=args.action_channels,
             speed_chn=args.speed_channels,
-            state_chn=args.state_channels
+            bidirectional=args.bidirectional,
         )
     elif args.rnn_model == "convol":
         temp_model = RNNEncoder(

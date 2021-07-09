@@ -5,7 +5,7 @@ import json
 import torch
 from pathlib import Path
 import random
-from torchvision.transforms import transforms
+from torchvision.transforms import transforms as T
 
 __CLASS_MAPPING__ = {
     0: 5,  # None
@@ -43,8 +43,8 @@ class CarlaDatasetTransform(Dataset):
         self.run_timestamp_mapping = {}
         self.timestamps = None
         self.metadata = None
-        self.transform = transforms.Compose([
-            transforms.ToTensor()
+        self.transform = T.Compose([
+            T.ToTensor()
         ])
         self.depth_transform = None
 
@@ -205,19 +205,246 @@ class ActorComposition(object):
         return rgb1, semantic1, depth1, processed
 
 
+class CarlaDatasetTransform2(Dataset):
+
+    # moving obstacles (0),  traffic lights (1),  road markers(2),  road (3),  sidewalk (4) and background (5).
+
+    def __init__(self, path: str, prob: float, size=(288, 288), crop_prob: float=0, hor_prob: float=0, actor_hor_prob: float=0):
+        self.path = path
+        self.run_timestamp_mapping = {}
+        self.timestamps = None
+        self.metadata = None
+        self.transform = T.Compose([
+            T.ToTensor()
+        ])
+        self.depth_transform = None
+
+        transforms = [
+            (crop_prob,  T.RandomResizedCrop(size, scale=(0.5, 1.0), ratio=(1, 1))),
+            (hor_prob, T.RandomHorizontalFlip(p=1.0))
+        ]
+        self.random_transform = RandomTransforms(transforms)
+
+        actor_transforms = [
+            (actor_hor_prob, T.RandomHorizontalFlip(p=1.0)),
+            #(1.0, T.RandomAffine((-180, 180), translate=(0.3, 0.3), scale=(1, 1), interpolation=T.InterpolationMode.BILINEAR, fill=-10))
+            
+        ]
+        self.composition = ActorComposition2(__CLASS_MAPPING__[4], __CLASS_MAPPING__[18],
+                                            path=path, prob=prob, transformations=actor_transforms)
+
+        self.hdf5_path = self.read_timestamps()
+        self.json_path = self.read_metadata()
+
+    def read_timestamps(self):
+        hdf5_files = list(Path(self.path).glob('**/*.hdf5'))
+        if len(hdf5_files) < 1:
+            raise RuntimeError("We couldn't find hdf5 files at provided path")
+
+        # assume that there is just one hdf5 file at provided path
+        hdf5_path = hdf5_files[0]
+        with h5py.File(hdf5_path, "r") as f:
+            for run in f.keys():
+                for timestamp in f[run].keys():
+                    self.run_timestamp_mapping[timestamp] = run
+                    semantic = np.array(f[run][timestamp]['semantic'])
+                    self.composition.detect(semantic, run, timestamp)
+        self.timestamps = list(self.run_timestamp_mapping.keys())
+        # self.timestamps = self.timestamps[:128]     # REMOVE THIS
+        return hdf5_path
+
+    def read_metadata(self):
+        json_files = list(Path(self.path).glob('**/*.json'))
+        if len(json_files) < 1:
+            raise RuntimeError("We couldn't find json files at provided path")
+
+        # assume that there is just one hdf5 file at provided path
+        json_path = json_files[0]
+        with open(json_path, "r") as f:
+            self.metadata = json.load(f)
+        return json_path
+
+    def get_metadata(self):
+        return self.metadata
+
+    def get_timestamps(self):
+        return self.timestamps
+
+    def get_random_full_episode(self):
+        # select random episode
+        run_id = random.choice(list(self.metadata.keys()))
+        timestamps = self.metadata[run_id].keys()
+        idxs = [self.timestamps.index(t) for t in timestamps]
+        camera, segmentation, traffic_light, vehicle_affordances, pedestrian = [], [], [], [], []
+        for idx in sorted(idxs):
+            x, s, tl, v_aff, pds = self[idx]
+            camera.append(x)
+            segmentation.append(s)
+            traffic_light.append(tl)
+            vehicle_affordances.append(v_aff)
+            pedestrian.append(pds)
+        return camera, segmentation, traffic_light, vehicle_affordances, pedestrian
+
+    def __getitem__(self, item):
+        element = self.timestamps[item]
+        run_id = self.run_timestamp_mapping[element]
+        with h5py.File(self.hdf5_path, "r") as f:
+            images = f[run_id][element]
+            rgb, semantic, depth = np.array(images['rgb']), np.array(images['semantic']), np.array(images['depth'])
+        
+        data = self.metadata[run_id][element]
+        if self.transform:
+            rgb_transformed = self.transform(rgb)
+        else:
+            rgb_transformed = torch.from_numpy(rgb).float()
+        if self.depth_transform:
+            depth_transformed = self.depth_transform(depth)
+        else:
+            depth_transformed = torch.tensor(depth).unsqueeze(0) / 1000
+        
+        # get ground truth
+        s = semantic[np.newaxis, :, :]
+        s = torch.tensor(s, dtype=torch.int8)
+
+        rgb_transformed, s, depth_transformed, proc = self.composition(rgb_transformed, s, depth_transformed)
+        rgb_transformed, s, depth_transformed = self.random_transform(rgb_transformed, s, depth_transformed)
+
+        # stack depth
+        x = torch.cat([depth_transformed.float(), rgb_transformed]).float()
+
+        tl = torch.tensor([1, 0] if data['tl_state'] == 'Green' else [0, 1], dtype=torch.float16)
+        v_aff = torch.tensor([data['lane_distance'], data['lane_orientation']]).float()
+        sum_pds = (s == 6).sum()
+        pds = torch.tensor([0, 1] if sum_pds > 100 else [1, 0]).float()
+        proc = torch.tensor([proc], dtype=torch.uint8)
+
+        return x, s, tl, v_aff, pds, proc
+
+    def __len__(self):
+        return len(self.timestamps)
+
+class RandomTransforms(object):
+    def __init__(self, transformations):
+        
+        self._transformations = transformations
+        # [
+        #     (rotation_prob, T.RandomRotation(rotation_range, interpolation=T.InterpolationMode.BILINEAR, expand=False)),
+        #     (crop_prob,  T.RandomResizedCrop(size, scale=crop_range, ratio=crop_ratio)),
+        #     (flip_prob, T.RandomHorizontalFlip(p=1.0))
+        # ]
+
+    def __call__(self, rgb, depth, semantic):
+        for prob, transform in self._transformations:
+            rgb, depth, semantic = self.apply_transform(rgb, depth, semantic, prob, transform)
+        return rgb, depth, semantic
+
+    def apply_transform(self, rgb, depth, semantic, prob, transform):
+        if np.random.rand() < prob:
+            state = torch.get_rng_state()
+            semantic = transform(semantic)
+            torch.set_rng_state(state)
+            depth = transform(depth)
+            torch.set_rng_state(state)
+            rgb = transform(rgb)
+        return rgb, depth, semantic
+
+class ActorComposition2(object):
+    def __init__(self, *ids, path='../dataset', prob: float = 0, transformations: list=[]):
+        self._prob = prob
+        self._ids = ids
+        self.hdf5_path = list(Path(path).glob('**/*.hdf5'))[0]
+        self._det_thresh = 100
+        self._tr_thresh = 1
+        self.totensor = T.Compose([
+            T.ToTensor()
+        ])
+
+        self.randomtransform = RandomTransforms(transformations)
+
+        self._actors = {}
+        for id in ids:
+            self._actors[id] = []
+
+    def _map_classes(self, semantic):
+        mapped_semantic = np.empty(semantic.shape)
+        for k, v in __CLASS_MAPPING__.items():
+            mapped_semantic[semantic == k] = v
+        return mapped_semantic
+    
+    def _map_classes_torch(self, semantic):
+        mapped_semantic = torch.empty(semantic.shape, dtype=torch.int8)
+        for k, v in __CLASS_MAPPING__.items():
+            mapped_semantic[semantic == k] = v
+        return mapped_semantic
+
+    def detect(self, semantic, run, timestamp):
+        semantic = self._map_classes(semantic)
+        for id in self._ids:
+            if np.sum(semantic == id) > self._det_thresh:
+                self._actors[id].append({
+                    'run': run,
+                    'timestamp': timestamp
+                })
+
+    def transform(self, rgb1, semantic1, depth1, rgb2, semantic2, depth2, id):
+        mask = torch.logical_and((depth2 < depth1), (semantic2 == id))
+        # mask = (semantic2 == id)
+        rgb_mask = mask.expand((rgb1.shape))
+        rgb1[rgb_mask] = rgb2[rgb_mask]
+        depth1[mask] = depth2[mask]
+        semantic1[mask] = semantic2[mask]
+        return rgb1, semantic1, depth1
+
+    def __call__(self, rgb1, semantic1, depth1):
+        semantic1 =self._map_classes_torch(semantic1)
+        processed = False
+
+        for id in self._ids:
+            if torch.sum(semantic1 == id) / torch.numel(semantic1) <= self._tr_thresh and np.random.rand() < self._prob and len(
+                    self._actors[id]) > 0:
+                processed = True
+                random_idx = np.random.choice(range(len(self._actors[id])))
+                random_sample = self._actors[id][random_idx]
+                run_id = random_sample['run']
+                element = random_sample['timestamp']
+                with h5py.File(self.hdf5_path, "r") as f:
+                    sample2 = f[run_id][element]
+                    rgb2, semantic2, depth2 = self.randomtransform(
+                        self.totensor(np.array(sample2['rgb'])), 
+                        self._map_classes_torch(np.array(sample2['semantic'])).unsqueeze(dim=0), 
+                        self.totensor(np.array(sample2['depth']))/1000)
+                    rgb1, semantic1, depth1 = self.transform(rgb1, semantic1, depth1, rgb2, semantic2, depth2, id)
+
+        return rgb1, semantic1, depth1, processed
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from carlaDatasetSimple import CarlaDatasetSimple
     import time
+    carla_path = '/home/johnny/Escritorio/dataset/'
 
-    d1 = CarlaDatasetSimple('../datasets')
-    d2 = CarlaDatasetTransform('../datasets', prob=1.)
+    d1 = CarlaDatasetSimple(carla_path)
+    d2 = CarlaDatasetTransform2(carla_path, prob=1., size=(288, 288))
 
-    id = 1000
+    id = 100
 
     actors = d2.composition._actors
     print(
-        f"Number of images with pedestrians: {len(actors[6])}\tNumber of images with vehicles: {len(actors[0])}\tNumber of images with TL: {len(actors[1])}")
+        f"Number of images with pedestrians: {len(actors[6])}\tNumber of images with TL: {len(actors[1])}")
 
     tic = time.time()
     x1, s1, tl1, v_aff1, pds1 = d1[id]
@@ -244,7 +471,7 @@ if __name__ == '__main__':
     # print(s1.cpu().numpy()[0][170:200, 190:220])
 
     axs[0, 2].set_title('Depth original')
-    axs[0, 2].imshow(np.log(depth), cmap='gray')
+    axs[0, 2].imshow(np.log(depth+1e-100), cmap='gray')
 
     image = np.transpose(x2.cpu().numpy(), axes=(1, 2, 0))[:, :, -3:]
     print(f"\nNumber after ped pixels: {np.sum(s2.cpu().numpy() == 6)}")
@@ -258,6 +485,6 @@ if __name__ == '__main__':
     axs[1, 1].imshow(s2.cpu().numpy()[0], vmin=0, vmax=6)
 
     axs[1, 2].set_title('Depth modified')
-    axs[1, 2].imshow(np.log(depth), cmap='gray')
+    axs[1, 2].imshow(np.log(depth+1e-100), cmap='gray')
     plt.show()
     # print(d.get_random_full_episode())

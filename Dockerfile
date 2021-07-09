@@ -15,9 +15,10 @@ RUN apt-get update
 RUN pip install -r requirements.txt
 
 # Copy code
-COPY scripts/ /home/tsad/scripts/
-COPY models/ /home/tsad/models/
-COPY utils/ /home/tsad/utils/
+COPY . /home/tsad/
+#COPY scripts/ /home/tsad/scripts/
+#COPY models/ /home/tsad/models/
+#COPY utils/ /home/tsad/utils/
 RUN mkdir /home/tsad/dataset
 WORKDIR /home/tsad/scripts
 

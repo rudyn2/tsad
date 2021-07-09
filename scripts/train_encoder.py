@@ -66,6 +66,8 @@ def run(args):
     print(colored("[*] Initializing dataset and dataloader", "white"))
     if args.dataset == "simple":
         dataset = CarlaDatasetSimple(args.data)
+    elif args.dataset == "transform2":
+        dataset = CarlaDatasetTransform2(args.data, prob=1, crop_prob=0.5, hor_prob=0.5, actor_hor_prob=0.5)
     else:
         dataset = CarlaDatasetTransform(args.data, prob=1)
     n_val = int(len(dataset) * 0.05)
@@ -234,7 +236,7 @@ if __name__ == '__main__':
     from models.ADEncoder import ADEncoder
     import torch
     from torch import optim
-    from models.carlaDatasetTransform import CarlaDatasetTransform
+    from models.carlaDatasetTransform import CarlaDatasetTransform, CarlaDatasetTransform2
     from models.carlaDatasetSimple import CarlaDatasetSimple
     import argparse
 
