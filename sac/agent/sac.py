@@ -146,7 +146,6 @@ class SACAgent(Agent):
 
     def update_actor_and_alpha(self, obs, obs_e, act_e):
         # behavioral cloning component
-        torch.autograd.set_detect_anomaly(True)
         log_prob_e = None
         if obs_e and act_e:
             dist_e = self.actor(obs_e)

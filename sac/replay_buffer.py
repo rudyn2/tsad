@@ -89,7 +89,20 @@ class MixedReplayBuffer(object):
                  offline_buffer_json: str = None):
         self._offline_buffer_hdf5_path = offline_buffer_hdf5
         self._offline_buffer_json_path = offline_buffer_json
-        self._online_buffer = ReplayMemoryFast(online_memory_size)
+
+        # create buffer per each high level command
+        self._online_buffers = {
+            0: ReplayMemoryFast(online_memory_size),    # RIGHT
+            1: ReplayMemoryFast(online_memory_size),    # LEFT
+            2: ReplayMemoryFast(online_memory_size),    # STRAIGHT
+            3: ReplayMemoryFast(online_memory_size)     # LANE FOLLOW
+        }
+        self._offline_buffers = {
+            0: ReplayMemoryFast(online_memory_size),  # RIGHT
+            1: ReplayMemoryFast(online_memory_size),  # LEFT
+            2: ReplayMemoryFast(online_memory_size),  # STRAIGHT
+            3: ReplayMemoryFast(online_memory_size)  # LANE FOLLOW
+        }
         self.reward_weights = reward_weights
 
         if self._offline_buffer_json_path and self._offline_buffer_hdf5_path:
@@ -121,7 +134,7 @@ class MixedReplayBuffer(object):
                     not_done = 0 if idx == len(steps) - 1 else 1
                     transition = self._get_transition(f[run_id], episode_metadata, step, next_step)
                     transition = *transition, not_done
-                    offline_buffer.add(*transition)
+                    # add to some buffer depending on the HLC command of the current observation
         return offline_buffer
 
     def _get_transition(self, h5py_group: h5py.File, metadata_json: dict, step: str, next_step: str) \
@@ -180,5 +193,5 @@ if __name__ == '__main__':
     mixed_replay_buffer = MixedReplayBuffer(512,
                                             reward_weights=(0.3, 0.3, 0.3),
                                             offline_buffer_hdf5='../dataset/encodings/encodings.hdf5',
-                                            offline_buffer_json='../dataset/embeddings/clean_1.json')
+                                            offline_buffer_json='../dataset/encodings/encodings.json')
     offline, online = mixed_replay_buffer.sample(batch_size=512, offline=0.7)

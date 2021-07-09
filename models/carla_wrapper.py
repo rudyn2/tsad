@@ -107,7 +107,7 @@ class EncodeWrapper(Wrapper):
 
     def create_temporal_encoding(self, action: list) -> Tensor:
         """
-        Given the last 4 simulation steps, it creates an temporal encoding using provided RNN. In order to achieve that,
+        Given the last 4 simulation steps, it creates a temporal encoding using provided RNN. In order to achieve that,
         the RNN is trying to predict the next simulation step.
         """
         stacked_frames = torch.cat([self._visual_buffer[0],
@@ -138,8 +138,25 @@ if __name__ == '__main__':
     from ADEncoder import ADEncoder
     from TemporalEncoder import VanillaRNNEncoder
 
-    visual = ADEncoder(backbone='efficientnet-b5')
-    temp = VanillaRNNEncoder()
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    vis_weights = r'C:\Users\C0101\Documents\tsad\dataset\weights\best_model_1_validation_accuracy=-0.5557.pt'
+    temp_weights = r'C:\Users\C0101\Documents\tsad\dataset\weights\best_VanillaRNNEncoder(2).pth'
+
+    visual = ADEncoder(backbone='efficientnet-b0')
+    # visual.load_state_dict(torch.load(vis_weights))
+    visual.to(device)
+    visual.eval()
+    visual.freeze()
+
+    temp = VanillaRNNEncoder(num_layers=4,
+                             hidden_size=1024,
+                             action__chn=256,
+                             speed_chn=256,
+                             bidirectional=True)
+    temp.load_state_dict(torch.load(temp_weights))
+    temp.to(device)
+    temp.eval()
+    temp.freeze()
 
     params = {
         # carla connection parameters+
@@ -154,6 +171,7 @@ if __name__ == '__main__':
         'obs_size': 288,  # sensor width and height
         'max_past_step': 1,  # the number of past steps to draw
         'dt': 0.025,  # time interval between two frames
+        'reward_weights': (0.3, 0.3, 0.3),
         'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
         'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
         'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
@@ -166,7 +184,7 @@ if __name__ == '__main__':
         'max_ego_spawn_times': 200,  # maximum times to spawn ego vehicle
     }
     carla_raw_env = CarlaEnv(params)
-    carla_processed_env = EncodeWrapper(carla_raw_env, visual, temp, debug=True)
+    carla_processed_env = EncodeWrapper(carla_raw_env, visual, temp)
     obs = carla_processed_env.reset()
     for i in range(100):
         obs, reward, done, info = carla_processed_env.step([1, 0, 0])

@@ -313,7 +313,6 @@ class ADEncoder(nn.Module):
                 'pedestrian': pedestrian
                 }
 
-
     def encode(self, x):
         x = self.backbone(x)
         return x
@@ -325,6 +324,12 @@ class ADEncoder(nn.Module):
 
 if __name__ == '__main__':
     torch.cuda.empty_cache()
-    sample_input = torch.rand((1, 4, 288, 288)).to('cuda')
-    model = ADEncoder(backbone='efficientnet').to('cuda')
-    y = model(sample_input)
+    model = ADEncoder(backbone='efficientnet-b0').to('cuda')
+
+    def call_model():
+        model.encode(torch.rand((4, 4, 288, 288)).to('cuda'))
+
+
+    for _ in range(10):
+        call_model()
+
