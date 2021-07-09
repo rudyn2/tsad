@@ -312,6 +312,10 @@ class CarlaDatasetTransform2(Dataset):
         # stack depth
         x = torch.cat([depth_transformed.float(), rgb_transformed]).float()
 
+        # cropping
+        x = x[:, 64:, :]
+        s = s[:, 64:, :]
+
         tl = torch.tensor([1, 0] if data['tl_state'] == 'Green' else [0, 1], dtype=torch.float16)
         v_aff = torch.tensor([data['lane_distance'], data['lane_orientation']]).float()
         sum_pds = (s == 6).sum()
