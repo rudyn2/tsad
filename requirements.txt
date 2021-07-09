@@ -7,3 +7,4 @@ memory_profiler
 pytorch-memlab==0.2.3
 pytorch-ignite
 termcolor
+timm
