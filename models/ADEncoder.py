@@ -269,6 +269,51 @@ class EfficientNetBackbone(nn.Module):
         return x
 
 
+__TIM_MODELS__ = {
+    "mobilenetv2_100": 320,
+    'mobilenetv3_small_100': 576,
+    'mobilenetv3_small_075': 432,
+    'mobilenetv3_large_100': 960,
+    'mobilenetv3_large_075': 720,
+    'regnety_032': 1512,
+    'efficientnet_b0': 320,
+    'efficientnet_b1': 320,
+    'efficientnet_b2': 352,
+    'efficientnet_b3': 384,
+    'efficientnet_b4': 448,
+    'efficientnet_b5': 512,
+    'efficientnet_b6': 576,
+    'efficientnet_b7': 640,
+    'efficientnet_b8': 704,
+    'efficientnet_l2': 1376,
+    'efficientnet_lite0': 320,
+    'efficientnet_lite4': 448,
+
+}
+class TimmBackbone(nn.Module):
+    def __init__(self, model_name: str="mobilenetv2_100"):
+        super(TimmBackbone, self).__init__()
+        self.name = model_name
+
+        import timm
+        self.backbone = timm.create_model(model_name, pretrained=True, features_only=True)
+        self.conv_input_channels = torch.nn.Conv2d(
+            4, 3, kernel_size=(1, 1), bias=False
+        )
+        self.conv_adjust_channels = torch.nn.Conv2d(__TIM_MODELS__[model_name], 512,
+                                                    kernel_size=(1, 1),
+                                                    bias=False)
+        self.pool_adjust_dim = torch.nn.AdaptiveAvgPool2d((4, 4))
+    
+    def forward(self, x):
+        x = self.conv_input_channels(x)
+        x = self.backbone(x)[-1]
+        x = self.conv_adjust_channels(x)
+        x = self.pool_adjust_dim(x)
+        return x
+
+
+
 class ADEncoder(nn.Module):
     """
     Autonomous Driving Encoder
@@ -280,6 +325,9 @@ class ADEncoder(nn.Module):
             self.backbone = ResNet(ResBlock, [3, 4, 6, 3], 4, 10)
         elif backbone.startswith("efficientnet"):
             self.backbone = EfficientNetBackbone(name=backbone)
+        elif backbone.lower() in __TIM_MODELS__.keys():
+            self.backbone = TimmBackbone(backbone)
+            
         self.seg = ImageSegmentationBranch(512, 7)
         self.traffic_light_classifier = TrafficLightClassifier()
         self.vehicle_position = VehicleAffordanceRegressor()

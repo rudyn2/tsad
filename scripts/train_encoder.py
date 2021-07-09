@@ -83,7 +83,7 @@ def run(args):
     print(colored("Using device: ", "white") + colored(device, "green"))
 
     print(colored("[*] Initializing model, optimizer and loss", "white"))
-    model = ADEncoder(backbone='efficientnet-b5')
+    model = ADEncoder(backbone=args.backbone)
     model.to(device)
     if args.checkpoint:
         model.load_state_dict(torch.load(args.checkpoint))
@@ -247,6 +247,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch-size', default=64, type=int, help='Batch size.')
     parser.add_argument('--checkpoint', default=None, type=str, help='Path to model checkpoint from which to start.')
     parser.add_argument('--num-workers', default=4, type=int, help='Number of data loader workers')
+    parser.add_argument('--backbone', default='efficientnet-b5', type=str, help='Which backbone use')
 
     # weights
     parser.add_argument('--seg-loss', default='dice', type=str, help='Type of loss used for semantic segmentation.'
@@ -261,6 +262,9 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', default=2, type=int, help='Number of epochs.')
     parser.add_argument('--lr', default=0.0001, type=float, help='Learning rate.')
     args = parser.parse_args()
+
+
+    
 
     weights_to_tuple = lambda x: tuple([float(s) for s in str(x).split(",")])
     args.loss_weights = weights_to_tuple(args.loss_weights)
