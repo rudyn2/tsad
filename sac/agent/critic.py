@@ -16,9 +16,9 @@ class DoubleQCritic(nn.Module):
         self.outputs = dict()
         self.apply(utils.weight_init)
 
-    def forward(self, obs, action):
-        q1 = self.Q1(obs, action)
-        q2 = self.Q2(obs, action)
+    def forward(self, obs, action, hlc):
+        q1 = self.Q1(obs, action, hlc)
+        q2 = self.Q2(obs, action, hlc)
 
         self.outputs['q1'] = q1
         self.outputs['q2'] = q2

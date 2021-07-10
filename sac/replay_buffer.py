@@ -159,8 +159,8 @@ class MixedReplayBuffer(object):
         """
         assert 0 <= offline <= 1, f"Offline relative size should be between 0 and 1, got: {offline}"
         sub_batch_size = batch_size // 4
-        online_batch_size = (int(batch_size * (1 - offline))) // 4
-        offline_batch_size = (batch_size - online_batch_size) // 4
+        online_batch_size = (int(sub_batch_size * (1 - offline)))
+        offline_batch_size = (sub_batch_size - online_batch_size)
 
         all_online_samples, all_offline_samples = dict(), dict()
         for i in range(4):
@@ -178,7 +178,7 @@ class MixedReplayBuffer(object):
             all_online_samples[i] = online_samples
             all_offline_samples[i] = offline_samples
 
-        # if it couldn't collect enough samples, return an empty list
+        # if it couldn't collect enough samples, return an empty dict
         if sum(len(s) for s in all_online_samples.values()) + \
                 sum(len(s) for s in all_offline_samples.values()) < batch_size:
             return {}, {}
@@ -192,8 +192,10 @@ class MixedReplayBuffer(object):
 
 
 if __name__ == '__main__':
+
     mixed_replay_buffer = MixedReplayBuffer(512,
                                             reward_weights=(0.3, 0.3, 0.3),
                                             offline_buffer_hdf5='../dataset/encodings/encodings.hdf5',
                                             offline_buffer_json='../dataset/encodings/encodings.json')
-    offline, online = mixed_replay_buffer.sample(batch_size=512, offline=0.7)
+    offline, online = mixed_replay_buffer.sample(batch_size=32, offline=0.25)
+
