@@ -153,9 +153,9 @@ class SACAgent(Agent):
         bc_loss = None
         if obs_e and act_e:
             bc_loss = torch.tensor(.0, device=self.device)
-            for i in range(4):
-                dist_e = self.actor(obs_e[i], hlc=i)
-                act_e_hlc = self.act_parser_invert(self._to_tensor(act_e[i]))
+            for hlc in range(4):
+                dist_e = self.actor(obs_e[hlc], hlc=hlc)
+                act_e_hlc = self.act_parser_invert(self._to_tensor(act_e[hlc]))
                 log_prob_e = dist_e.log_prob(torch.clamp(act_e_hlc, min=-1 + 1e-6, max=1.0 - 1e-6)).sum(-1, keepdim=True)
                 bc_loss += - (self.bc_loss_weight * log_prob_e).mean()
             bc_loss /= 4
@@ -164,11 +164,11 @@ class SACAgent(Agent):
         # on-policy actor loss
         sac_loss = torch.tensor(.0, device=self.device)
         total_log_prob = torch.tensor(.0, device=self.device)
-        for i in range(4):
-            dist = self.actor(obs[i], hlc=i)
+        for hlc in range(4):
+            dist = self.actor(obs[hlc], hlc=hlc)
             action = dist.rsample()
             log_prob = dist.log_prob(action).sum(-1, keepdim=True)
-            actor_Q1, actor_Q2 = self.critic(obs[i], self.act_parser(action), hlc=i)
+            actor_Q1, actor_Q2 = self.critic(obs[hlc], self.act_parser(action), hlc=hlc)
             actor_Q = torch.min(actor_Q1, actor_Q2)
             sac_loss += self.actor_loss_weight * (self.alpha.detach() * log_prob - actor_Q).mean()
             total_log_prob += log_prob.mean()
