@@ -319,11 +319,11 @@ class ADEncoder(nn.Module):
     Autonomous Driving Encoder
     """
 
-    def __init__(self, backbone: str):
+    def __init__(self, backbone: str, use_timm: bool=False):
         super(ADEncoder, self).__init__()
         if backbone == "resnet":
             self.backbone = ResNet(ResBlock, [3, 4, 6, 3], 4, 10)
-        elif backbone.startswith("efficientnet"):
+        elif backbone.startswith("efficientnet") and not use_timm:
             self.backbone = EfficientNetBackbone(name=backbone)
         elif backbone.lower() in __TIM_MODELS__.keys():
             self.backbone = TimmBackbone(backbone)

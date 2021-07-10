@@ -92,7 +92,7 @@ def run(args):
     print(colored("Using device: ", "white") + colored(device, "green"))
 
     print(colored("[*] Initializing model, optimizer and loss", "white"))
-    model = ADEncoder(backbone=args.backbone)
+    model = ADEncoder(backbone=args.backbone, use_timm=args.force_timm)
     model.to(device)
     if args.checkpoint:
         model.load_state_dict(torch.load(args.checkpoint))
@@ -276,6 +276,7 @@ if __name__ == '__main__':
                         help="Number of vertical and horizontal cells, only used when dataset is mosaics")
     parser.add_argument('--transf-prob', default=0.75, type=float,
                         help="Probability of rgb-D and segmentation modification, only used when dataset is transform or mosaics")
+    parser.add_argument('--force-timm', action='store_true', help='Whether to use timm library or not, only used when backbone is efficientnet.')
     args = parser.parse_args()
 
     weights_to_tuple = lambda x: tuple([float(s) for s in str(x).split(",")])
