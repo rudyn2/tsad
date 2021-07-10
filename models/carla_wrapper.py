@@ -40,9 +40,8 @@ class EncodeWrapper(Wrapper):
         """
         rgb = torch.tensor(observation['camera'])[64:, :, :]
         depth = torch.tensor(observation['depth'])[64:, :]
-        x = np.concatenate((rgb, depth[:, :, np.newaxis]), axis=2)
-        x = np.transpose(x, axes=[2, 0, 1])
-        x = torch.tensor(x, device=self._device).unsqueeze(0).float()
+        x = torch.cat([rgb.permute(2, 0, 1), depth.unsqueeze(0)])
+        x = x.unsqueeze(0).to(self._device).float()
         return x
 
     def reset(self, **kwargs):

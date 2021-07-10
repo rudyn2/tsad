@@ -122,7 +122,7 @@ class SACAgent(Agent):
         return output.detach().float()
 
     def _to_tensor(self, arr):
-        return torch.tensor(arr, device=self.device).float()
+        return torch.as_tensor(arr, device=self.device).float()
 
     def update_critic(self, obs, act, reward, next_obs, not_done):
 
@@ -144,11 +144,12 @@ class SACAgent(Agent):
         # wandb.log({'train_critic/loss': critic_loss})
 
         # Optimize the critic
-        self.critic_optimizer.zero_grad()
+        self.critic_optimizer.zero_grad(set_to_none=True)
         critic_loss.backward()
         self.critic_optimizer.step()
 
     def update_actor_and_alpha(self, obs, obs_e, act_e):
+
         # behavioral cloning component
         bc_loss = None
         if obs_e and act_e:
@@ -180,14 +181,14 @@ class SACAgent(Agent):
         # wandb.log({'train_actor/entropy': -total_log_prob.mean().item()})
 
         # optimize the actor
-        self.actor_optimizer.zero_grad()
+        self.actor_optimizer.zero_grad(set_to_none=True)
         sac_loss.backward()
         if bc_loss is not None:
             bc_loss.backward()
         self.actor_optimizer.step()
 
         if self.learnable_temperature:
-            self.log_alpha_optimizer.zero_grad()
+            self.log_alpha_optimizer.zero_grad(set_to_none=True)
             alpha_loss = (self.alpha * (-total_log_prob - self.target_entropy).detach()).mean()
             # wandb.log({'train_alpha/loss': alpha_loss})
             # wandb.log({'train_alpha/value': self.alpha})

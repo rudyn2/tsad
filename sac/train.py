@@ -80,6 +80,7 @@ if __name__ == '__main__':
 
     # region: GENERAL PARAMETERS
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    torch.backends.cudnn.benchmark = True
     control_action_dim = 2
     input_action_dim = 3
     # reward weights for speed, collision and lane distance
@@ -94,7 +95,7 @@ if __name__ == '__main__':
     # region: init env
     print(colored("[*] Initializing models", "white"))
     visual = ADEncoder(backbone='efficientnet-b5')
-    visual.load_state_dict(torch.load(args.vis_weights))
+    # visual.load_state_dict(torch.load(args.vis_weights))
     visual.to(device)
     visual.eval()
     visual.freeze()
@@ -159,6 +160,8 @@ if __name__ == '__main__':
                      action_dim=control_action_dim,
                      batch_size=args.batch_size,
                      offline_proportion=args.bc_proportion,
+                     actor_update_frequency=4,
+                     critic_target_update_frequency=4,
                      actor_weight_decay=args.actor_l2,
                      critic_weight_decay=args.critic_l2)
     print(colored("[*] SAC Agent is ready!", "green"))

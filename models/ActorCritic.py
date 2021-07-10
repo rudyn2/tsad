@@ -42,7 +42,7 @@ class ConvReduction(nn.Module):
         super(ConvReduction, self).__init__()
         # reduce the dimensional size to its half
         self.conv = nn.Conv2d(in_channels=in_channels, out_channels=in_channels,
-                              kernel_size=(3, 3), padding=(1, 1), stride=(2, 2))
+                              kernel_size=(3, 3), padding=(1, 1), stride=(2, 2), bias=False)
         self.bn = nn.BatchNorm2d(in_channels)
         self.avg_pooling = nn.AdaptiveAvgPool2d(1)
 
