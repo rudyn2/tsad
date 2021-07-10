@@ -1,6 +1,3 @@
-from abc import abstractmethod
-from os import replace
-from numpy.core.fromnumeric import size
 from torch.utils.data import Dataset
 import h5py
 import numpy as np
@@ -9,6 +6,7 @@ import torch
 from pathlib import Path
 import random
 from torchvision.transforms import transforms as T
+import tqdm
 
 __CLASS_MAPPING__ = {
     0: 5,  # None
@@ -78,7 +76,7 @@ class CarlaDatasetMosaics(Dataset):
         # assume that there is just one hdf5 file at provided path
         hdf5_path = hdf5_files[0]
         with h5py.File(hdf5_path, "r") as f:
-            for run in f.keys():
+            for run in tqdm(f.keys()):
                 for timestamp in f[run].keys():
                     self.run_timestamp_mapping[timestamp] = run
                     semantic = np.array(f[run][timestamp]['semantic'])
