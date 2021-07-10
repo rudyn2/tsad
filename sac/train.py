@@ -196,6 +196,9 @@ if __name__ == '__main__':
                          )
     try:
         trainer.run()
+    except Exception as e:
+        print(colored("\nEarly stopping due to exception", "red"))
+        print(e)
     finally:
-        print(colored("Stopping", "red"))
+        print(colored("\nTraning finished!", "green"))
         trainer.end()

@@ -99,7 +99,7 @@ class SACAgent(Agent):
         return self.log_alpha.exp()
 
     def act(self, obs, sample=False):
-        dist = self.actor(obs)
+        dist = self.actor(obs, obs['hlc'])
         action = dist.sample() if sample else dist.mean
         action = action.clamp(*self.action_range)
         return utils.to_np(action[0])
@@ -197,23 +197,8 @@ class SACAgent(Agent):
     def update(self, replay_buffer, step):
         offline_samples, online_samples = replay_buffer.sample(self.batch_size, self.offline_proportion)
 
-        # if there aren't enough samples, skip this update until the replay buffer is bigger
-        len_online = sum(len(v) for v in online_samples.values())
-        len_offline = sum(len(v) for v in offline_samples.values())
-        if len_online == 0 and len_offline == 0:
-            return
-
-        # separate in different dicts
-        online_samples = {i: list(zip(*online_samples[i])) for i in online_samples.keys()}
-        offline_samples = {i: list(zip(*offline_samples[i])) for i in offline_samples.keys()}
-        obs = {k: v[0] for k, v in online_samples.items()}
-        next_obs = {k: v[3] for k, v in online_samples.items()}
-        act = {k: v[1] for k, v in online_samples.items()}
-        reward = {k: v[2] for k, v in online_samples.items()}
-        not_done = {k: v[4] for k, v in online_samples.items()}
-
-        offline_obs = {k: v[0] for k, v in offline_samples.items()}
-        offline_act = {k: v[1] for k, v in offline_samples.items()}
+        obs, act, reward, next_obs, not_done = online_samples
+        offline_obs, offline_act, _, _, _ = offline_samples
         # wandb.log({'train/batch_reward': np.array(reward).mean()})
 
         self.update_critic(obs, act, reward, next_obs, not_done)

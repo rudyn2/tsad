@@ -152,36 +152,46 @@ class MixedReplayBuffer(object):
                            float(step_metadata['control']['steer'])])
         return observation, action, reward, next_observation
 
-    def sample(self, batch_size: int, offline: float = 0.25) -> Tuple[Dict, Dict]:
+    def sample(self, batch_size: int, offline: float = 0.25):
         """
-        Returns a tuple of offline samples and online samples. <offline> should be the relative size of the
-        offline samples.
+        Returns a sample of experiences. <offline> should be the relative size of the
+        offline samples. The sample is a tuple of 5 elements, one per each data type (obs, act, rew, next_obs, not_done),
+        and is organized as follows:
+            (
+                {
+                    0: [...],   # high level commands
+                    1: [...],
+                    2: [...],
+                    3: [...]
+                }, # end of the observations
+                ...
+            )
         """
         assert 0 <= offline <= 1, f"Offline relative size should be between 0 and 1, got: {offline}"
         sub_batch_size = batch_size // 4
         online_batch_size = (int(sub_batch_size * (1 - offline)))
         offline_batch_size = (sub_batch_size - online_batch_size)
 
-        all_online_samples, all_offline_samples = dict(), dict()
-        for i in range(4):
+        # (obs, act, rew, next_obs, not_done)
+        all_online_samples, all_offline_samples = [defaultdict(list) for _ in range(5)], \
+                                                  [defaultdict(list) for _ in range(5)]
+        for hlc in range(4):
             offline_samples = []
             if self._offline_buffers:
-                offline_samples = self._offline_buffers[i].unpacked_sample(offline_batch_size)
+                offline_samples = self._offline_buffers[hlc].sample(offline_batch_size)
             if len(offline_samples) == 0:  # then either the buffer doesn't exists or doesn't have enough samples
                 # so, we try to pull all of them from the online buffer
-                online_samples = self._online_buffers[i].unpacked_sample(sub_batch_size)
+                online_samples = self._online_buffers[hlc].sample(sub_batch_size)
             else:  # if we have samples from the offline buffer, then we just get the missing ones
-                online_samples = self._online_buffers[i].unpacked_sample(online_batch_size)
+                online_samples = self._online_buffers[hlc].sample(online_batch_size)
                 if len(online_samples) == 0:  # then we don't have enough samples in the online buffer
-                    online_samples = self._offline_buffers[i].unpacked_sample(online_batch_size)
+                    online_samples = self._offline_buffers[hlc].sample(online_batch_size)
             # save each sub-batch
-            all_online_samples[i] = online_samples
-            all_offline_samples[i] = offline_samples
+            for i, data in enumerate(offline_samples):
+                all_offline_samples[i][hlc].extend(data)
+            for i, data in enumerate(online_samples):
+                all_online_samples[i][hlc].extend(data)
 
-        # if it couldn't collect enough samples, return an empty dict
-        if sum(len(s) for s in all_online_samples.values()) + \
-                sum(len(s) for s in all_offline_samples.values()) < batch_size:
-            return {}, {}
         return all_online_samples, all_offline_samples
 
     def add(self, obs, action, reward, next_obs, done):
