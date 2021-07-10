@@ -1,3 +1,6 @@
+from abc import abstractmethod
+from os import replace
+from numpy.core.fromnumeric import size
 from torch.utils.data import Dataset
 import h5py
 import numpy as np
@@ -34,11 +37,11 @@ __CLASS_MAPPING__ = {
 }
 
 
-class CarlaDatasetTransform(Dataset):
+class CarlaDatasetMosaics(Dataset):
 
     # moving obstacles (0),  traffic lights (1),  road markers(2),  road (3),  sidewalk (4) and background (5).
 
-    def __init__(self, path: str, prob: float):
+    def __init__(self, path: str, prob: float, cells=(2, 2)):
         self.path = path
         self.run_timestamp_mapping = {}
         self.timestamps = None
@@ -48,8 +51,21 @@ class CarlaDatasetTransform(Dataset):
         ])
         self.depth_transform = None
 
-        self.composition = ActorComposition(__CLASS_MAPPING__[4], __CLASS_MAPPING__[18],
-                                            path=path, prob=prob)
+        actors = {
+            __CLASS_MAPPING__[4]: {
+                'prob': 0.3,
+                'thresh': 50
+            },
+            __CLASS_MAPPING__[18]: {
+                'prob': 0.3,
+                'thresh': 10
+            },
+            __CLASS_MAPPING__[6]: {
+                'prob': 0.4,
+                'thresh': 10
+            },
+        }
+        self.composition = Mosaics(actors, cells=cells, path=path, prob=prob)
 
         self.hdf5_path = self.read_timestamps()
         self.json_path = self.read_metadata()
@@ -112,8 +128,6 @@ class CarlaDatasetTransform(Dataset):
         rgb, semantic, depth, proc = self.composition(rgb, semantic, depth)
 
         data = self.metadata[run_id][element]
-        # x = np.concatenate((rgb, depth[:, :, np.newaxis]), axis=2)
-        # x = np.transpose(x, axes=[2, 0, 1])
         if self.transform:
             rgb_transformed = self.transform(rgb)
         else:
@@ -131,8 +145,8 @@ class CarlaDatasetTransform(Dataset):
         s = torch.tensor(s, dtype=torch.int8)
 
         # cropping
-        x = x[:, 64:, :]
-        s = s[:, 64:, :]
+        # x = x[:, 64:, :]
+        # s = s[:, 64:, :]
 
         tl = torch.tensor([1, 0] if data['tl_state'] == 'Green' else [0, 1], dtype=torch.float16)
         v_aff = torch.tensor([data['lane_distance'], data['lane_orientation']]).float()
@@ -146,19 +160,24 @@ class CarlaDatasetTransform(Dataset):
         return len(self.timestamps)
 
 
-class ActorComposition(object):
-    def __init__(self, *ids, path='../dataset', prob: float = 0):
+class Mosaics(object):
+    def __init__(self, actors, cells=(2, 2), path='../dataset', prob: float = 0):
         self._prob = prob
-        self._ids = ids
+        self._cells = cells
+        
         self.hdf5_path = list(Path(path).glob('**/*.hdf5'))[0]
         self._det_thresh = 20
         self._tr_thresh = 1
 
+        self._params = actors
+        self._ids = list(actors.keys())
+        self._ids_probs = [p['prob'] for p in actors.values()]
         self._actors = {}
-        for id in ids:
+        for id in self._ids:
             self._actors[id] = []
 
-    def _map_classes(self, semantic):
+    @staticmethod
+    def _map_classes(semantic):
         mapped_semantic = np.empty(semantic.shape)
         for k, v in __CLASS_MAPPING__.items():
             mapped_semantic[semantic == k] = v
@@ -166,46 +185,65 @@ class ActorComposition(object):
 
     def detect(self, semantic, run, timestamp):
         semantic = self._map_classes(semantic)
-        for id in self._ids:
-            if np.sum(semantic == id) > self._det_thresh:
-                self._actors[id].append({
-                    'run': run,
-                    'timestamp': timestamp
-                })
 
-    def transform(self, rgb1, semantic1, depth1, rgb2, semantic2, depth2, id):
-        semantic_mask = (semantic2 == id)
-        depth_mask = (depth2 < depth1)
-        mask = np.logical_and(semantic_mask, depth_mask)
-        rgb1[mask] = rgb2[mask]
-        depth1[mask] = depth2[mask]
-        semantic1[mask] = semantic2[mask]
-        return rgb1, semantic1, depth1
+        for i in range(self._cells[0]):
+            for j in range(self._cells[1]):
+                curr_cell = self.get_cell(semantic, i, j)
+                for id in self._ids:
+                    if np.sum(curr_cell == id) > self._params[id]['thresh']:
+                        self._actors[id].append({
+                            'run': run,
+                            'timestamp': timestamp,
+                            'i': i,
+                            'j': j
+                        })
+    
+    def get_cell(self, image, i, j):
+        (width, height) = image.shape[:2]
+        cell_width, cell_height = width//self._cells[0], height//self._cells[1]
+        if len(image.shape) == 3:
+            return image[i*cell_width: (i+1)*cell_width, j*cell_height: (j+1)*cell_height, :]
+        else:
+            return image[i*cell_width: (i+1)*cell_width, j*cell_height: (j+1)*cell_height]
+
+    def replace_cell(self, image, cell, i, j):
+        (width, height) = image.shape[:2]
+        cell_width, cell_height = width//self._cells[0], height//self._cells[1]
+        if len(image.shape) == 3:
+            image[i*cell_width: (i+1)*cell_width, j*cell_height: (j+1)*cell_height, :] = cell
+        else:
+            image[i*cell_width: (i+1)*cell_width, j*cell_height: (j+1)*cell_height] = cell
+        return image
 
     def __call__(self, rgb1, semantic1, depth1):
         semantic1 = self._map_classes(semantic1)
         processed = False
 
-        for id in self._ids:
-            # if len(self._actors[id]) == 0:
-            #    print(f"No examples for {id}")
-            if np.sum(semantic1 == id) / semantic1.size <= self._tr_thresh and np.random.rand() < self._prob and len(
-                    self._actors[id]) > 0:
-                processed = True
-                random_idx = np.random.choice(range(len(self._actors[id])))
-                random_sample = self._actors[id][random_idx]
-                run_id = random_sample['run']
-                element = random_sample['timestamp']
-                with h5py.File(self.hdf5_path, "r") as f:
-                    sample2 = f[run_id][element]
-                    rgb2, semantic2, depth2 = np.array(sample2['rgb']), self._map_classes(
-                        np.array(sample2['semantic'])), np.array(sample2['depth'])
-                    rgb1, semantic1, depth1 = self.transform(rgb1, semantic1, depth1, rgb2, semantic2, depth2, id)
+        if self._prob > np.random.rand():
+            processed = True
 
+            # Which actor put in each cell
+            random_ids = np.random.choice(self._ids, size=self._cells, replace=True, p=self._ids_probs)
+            for i in range(self._cells[0]):
+                for j in range(self._cells[1]):
+                    id = random_ids[i, j]
+                    # Which example and cell use
+                    random_cell_idx = np.random.choice(range(len(self._actors[id])))
+                    random_cell = self._actors[id][random_cell_idx]
+                    run_id, element = random_cell['run'], random_cell['timestamp']
+                    cell_i, cell_j = random_cell['i'], random_cell['j']
+                    with h5py.File(self.hdf5_path, "r") as f:
+                        sample = f[run_id][element]
+                        rgb2, semantic2, depth2 = np.array(sample['rgb']), self._map_classes(
+                            np.array(sample['semantic'])), np.array(sample['depth'])
+                        cell_rgb = self.get_cell(rgb2, cell_i, cell_j)
+                        cell_semantic = self.get_cell(semantic2, cell_i, cell_j)
+                        cell_depth = self.get_cell(depth2, cell_i, cell_j)
+
+                        rgb1 = self.replace_cell(rgb1, cell_rgb, i, j)
+                        semantic1 = self.replace_cell(semantic1, cell_semantic, i, j)
+                        depth1 = self.replace_cell(depth1, cell_depth, i, j)
         return rgb1, semantic1, depth1, processed
-
-
-
 
 
 if __name__ == '__main__':
@@ -215,13 +253,13 @@ if __name__ == '__main__':
     carla_path = '/home/johnny/Escritorio/dataset/'
 
     d1 = CarlaDatasetSimple(carla_path)
-    d2 = CarlaDatasetTransform(carla_path, prob=1., size=(288, 288))
+    d2 = CarlaDatasetMosaics(carla_path, prob=1.)
 
     id = 100
 
     actors = d2.composition._actors
-    print(
-        f"Number of images with pedestrians: {len(actors[6])}\tNumber of images with TL: {len(actors[1])}")
+    # print(
+    #     f"Number of images with pedestrians: {len(actors[6])}\tNumber of images with TL: {len(actors[1])}\tNumber of images with roadlines: {len(actors[2])}")
 
     tic = time.time()
     x1, s1, tl1, v_aff1, pds1 = d1[id]
@@ -264,4 +302,3 @@ if __name__ == '__main__':
     axs[1, 2].set_title('Depth modified')
     axs[1, 2].imshow(np.log(depth+1e-100), cmap='gray')
     plt.show()
-    # print(d.get_random_full_episode())

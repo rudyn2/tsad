@@ -66,13 +66,22 @@ def run(args):
     print(colored("[*] Initializing dataset and dataloader", "white"))
     if args.dataset == "simple":
         dataset = CarlaDatasetSimple(args.data)
-    elif args.dataset == "transform2":
-        dataset = CarlaDatasetTransform2(args.data, prob=1, crop_prob=0.5, hor_prob=0.5, actor_hor_prob=0.5)
+    elif args.dataset == "mosaics":
+        cells =args.cells.replace(" ", "").split(",")
+        cells = tuple([int(cell) for cell in cells])
+        dataset = CarlaDatasetMosaics(args.data, prob=args.transf_prob, cells=cells)
     else:
         dataset = CarlaDatasetTransform(args.data, prob=1)
     n_val = int(len(dataset) * 0.05)
     n_train = len(dataset) - n_val
     train, val = random_split(dataset, [n_train, n_val])
+
+    # Disable transformation
+    try:
+        val.dataset.composition._prob = 0
+    except Exception:
+        pass
+
     train_loader = DataLoader(train, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers,
                               pin_memory=True)
     val_loader = DataLoader(val, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers,
@@ -236,14 +245,15 @@ if __name__ == '__main__':
     from models.ADEncoder import ADEncoder
     import torch
     from torch import optim
-    from models.carlaDatasetTransform import CarlaDatasetTransform, CarlaDatasetTransform2
+    from models.carlaDatasetTransform import CarlaDatasetTransform
+    from models.carlaDatasetMosaics import CarlaDatasetMosaics
     from models.carlaDatasetSimple import CarlaDatasetSimple
     import argparse
 
     parser = argparse.ArgumentParser(description="Train model utility",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--data', default='../dataset', type=str, help='Path to dataset folder')
-    parser.add_argument('--dataset', default="transform", type=str, help='Type of dataset [simple, transform].')
+    parser.add_argument('--dataset', default="mosaics", type=str, help='Type of dataset [simple, transform, mosaics].')
     parser.add_argument('--batch-size', default=64, type=int, help='Batch size.')
     parser.add_argument('--checkpoint', default=None, type=str, help='Path to model checkpoint from which to start.')
     parser.add_argument('--num-workers', default=4, type=int, help='Number of data loader workers')
@@ -261,10 +271,12 @@ if __name__ == '__main__':
 
     parser.add_argument('--epochs', default=2, type=int, help='Number of epochs.')
     parser.add_argument('--lr', default=0.0001, type=float, help='Learning rate.')
+
+    parser.add_argument('--cells', default="2, 2", type=str,
+                        help="Number of vertical and horizontal cells, only used when dataset is mosaics")
+    parser.add_argument('--transf-prob', default=0.75, type=float,
+                        help="Probability of rgb-D and segmentation modification, only used when dataset is transform or mosaics")
     args = parser.parse_args()
-
-
-    
 
     weights_to_tuple = lambda x: tuple([float(s) for s in str(x).split(",")])
     args.loss_weights = weights_to_tuple(args.loss_weights)

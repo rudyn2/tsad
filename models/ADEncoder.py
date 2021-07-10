@@ -144,7 +144,7 @@ class OutputConv(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, mid_channels: int):
         super(OutputConv, self).__init__()
         self.double_conv = DoubleConv(in_channels, out_channels, mid_channels)
-        self.avg_pool = nn.AdaptiveAvgPool2d((224, 288))
+        self.avg_pool = nn.AdaptiveAvgPool2d((288, 288))
         self.last_layer = nn.Conv2d(out_channels, out_channels, kernel_size=(1, 1))
 
     def forward(self, x):
@@ -374,5 +374,6 @@ class ADEncoder(nn.Module):
 if __name__ == '__main__':
     torch.cuda.empty_cache()
     sample_input = torch.rand((1, 4, 288, 288)).to('cuda')
-    model = ADEncoder(backbone='efficientnet').to('cuda')
+    model = ADEncoder(backbone='efficientnet-b0').to('cuda')
     y = model(sample_input)
+    print(y["segmentation"].shape)
