@@ -51,15 +51,15 @@ class CarlaDatasetMosaics(Dataset):
 
         actors = {
             __CLASS_MAPPING__[4]: {
-                'prob': 0.3,
+                'prob': 0.5,
                 'thresh': 50
             },
             __CLASS_MAPPING__[18]: {
-                'prob': 0.3,
+                'prob': 0.4,
                 'thresh': 10
             },
             __CLASS_MAPPING__[6]: {
-                'prob': 0.4,
+                'prob': 0.1,
                 'thresh': 10
             },
         }
