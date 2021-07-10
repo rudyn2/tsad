@@ -6,7 +6,7 @@ import torch
 from pathlib import Path
 import random
 from torchvision.transforms import transforms as T
-import tqdm
+from tqdm import tqdm
 
 __CLASS_MAPPING__ = {
     0: 5,  # None
