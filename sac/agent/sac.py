@@ -150,6 +150,7 @@ class SACAgent(Agent):
 
     def update_actor_and_alpha(self, obs, obs_e, act_e):
 
+        # with torch.cuda.amp.autocast(): -> mixed precision training
         # behavioral cloning component
         bc_loss = None
         if obs_e and act_e:
