@@ -4,6 +4,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Union
 
+__HLCNUMBER_TO_HLC__ = {
+    0: 'right',
+    1: 'left',
+    2: 'straight',
+    3: 'follow_lane'
+}
+
 
 class TwoLayerMLP(nn.Module):
 
@@ -33,23 +40,15 @@ class ConvReduction(nn.Module):
 
     def __init__(self, in_channels: int):
         super(ConvReduction, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels=in_channels, out_channels=in_channels,
-                               kernel_size=(3, 3), padding=(1, 1), stride=(1, 1))
-        self.relu = nn.ReLU()
-        self.bn1 = nn.BatchNorm2d(1024)
-        # second convolution layer reduce the dimensional size to its half
-        self.conv2 = nn.Conv2d(in_channels=in_channels, out_channels=in_channels,
-                               kernel_size=(3, 3), padding=(1, 1), stride=(2, 2))
-        self.bn2 = nn.BatchNorm2d(in_channels)
+        # reduce the dimensional size to its half
+        self.conv = nn.Conv2d(in_channels=in_channels, out_channels=in_channels,
+                              kernel_size=(3, 3), padding=(1, 1), stride=(2, 2), bias=False)
+        self.bn = nn.BatchNorm2d(in_channels)
         self.avg_pooling = nn.AdaptiveAvgPool2d(1)
 
     def forward(self, x):
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.relu(x)
-        x = self.conv2(x)
-        x = self.bn2(x)
-        x = self.relu(x)
+        x = self.conv(x)
+        x = self.bn(x)
         x = self.avg_pooling(x)
         x = torch.flatten(x, start_dim=1)
         # x.requires_grad = True
@@ -61,12 +60,6 @@ class Actor(nn.Module):
     Output: a (3,)
     Input: s (1024x4x4)
     """
-    HLCNUMBER_TO_HLC = {
-        0: 'right',
-        1: 'left',
-        2: 'straight',
-        3: 'follow_lane'
-    }
 
     def __init__(self, hidden_size: int, action_dim: int = 2):
         super(Actor, self).__init__()
@@ -85,18 +78,16 @@ class Actor(nn.Module):
             'straight': TwoLayerMLP(input_size, hidden_size, self._action_dim * 2)
         })
 
-    def forward(self, obs: Union[list, tuple, dict]):
+    def forward(self, obs: Union[list, tuple, dict], hlc):
 
         if isinstance(obs, list) or isinstance(obs, tuple):
             # if the observation is an iterable, then this method is going to be used for TRAINING in a batch-wise
             encoding = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0)
             speed = torch.stack([torch.tensor(o['speed'], device=self._device) for o in obs], dim=0).float()
-            hlc = torch.stack([torch.tensor(o['hlc'], device=self._device) for o in obs], dim=0).float()
         elif isinstance(obs, dict):
             # if the observation is a dict, then this method is going to be used for ACTION SELECTION
             encoding = torch.tensor(obs['encoding'], device=self._device).unsqueeze(0).float()
             speed = torch.tensor(obs['speed'], device=self._device).unsqueeze(0).float()
-            hlc = torch.tensor(obs['hlc'], device=self._device).unsqueeze(0).float()
         else:
             raise ValueError(f"Expected input of type list, tuple or dict but got: {type(obs)}")
 
@@ -105,14 +96,7 @@ class Actor(nn.Module):
         x_speed = torch.cat([x, speed_embedding], dim=1)  # B,[1024, 128] -> B,1152
 
         # forward
-        pred_branches = [self.branches[c](x_speed) for c in ["right", "left", "straight", "follow_lane"]]
-
-        # unpack using hlc mask
-        mask = hlc.long()
-        pred_branches = torch.stack(pred_branches)
-        pred_branches = torch.swapaxes(pred_branches, 0, -1)
-        preds = torch.sum(F.one_hot(mask, num_classes=4) * pred_branches, dim=-1).T
-
+        preds = self.branches[__HLCNUMBER_TO_HLC__[hlc]](x_speed)
         return preds
 
 
@@ -138,31 +122,20 @@ class Critic(nn.Module):
             'straight': TwoLayerMLP(input_size, hidden_dim, 1)
         })
 
-    def forward(self, obs: Union[list, tuple], action: Union[list, tuple, torch.Tensor]):
+    def forward(self, obs: Union[list, tuple], action: Union[list, tuple, torch.Tensor], hlc: int):
         encoding = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0).float()
         speed = torch.stack([torch.tensor(o['speed'], device=self._device) for o in obs], dim=0).float()
-        hlc = torch.stack([torch.tensor(o['hlc'], device=self._device) for o in obs], dim=0).float()
 
         if isinstance(action, list) or isinstance(action, tuple):
             action = torch.stack([torch.tensor(a) for a in action]).to(self._device)
 
-        x = self.conv_reduction(encoding)       # 1024x4x4 -> 1024
+        x = self.conv_reduction(encoding)  # 1024x4x4 -> 1024
         speed_embedding = self.speed_mlp(speed)
         action_embedding = self.action_mlp(action)
         x_speed_action = torch.cat([x, speed_embedding, action_embedding], dim=1)  # [1024, 128, 128] -> 1280
 
-        # TODO: Try to optimize this
         # forward
-        pred_branches = []
-        for c in ["right", "left", "straight", "follow_lane"]:
-            pred_branches.append(self.branches[c](x_speed_action))
-
-        # unpack using hlc mask
-        mask = hlc.long()
-        pred_branches = torch.stack(pred_branches)
-        pred_branches = torch.swapaxes(pred_branches, 0, -1)
-        preds = torch.sum(F.one_hot(mask, num_classes=4) * pred_branches, dim=-1).T
-        preds = preds.squeeze(-1)
+        preds = self.branches[__HLCNUMBER_TO_HLC__[hlc]](x_speed_action)
         return preds
 
 

@@ -68,8 +68,8 @@ class DiagGaussianActor(nn.Module):
         self.outputs = dict()
         self.apply(utils.weight_init)
 
-    def forward(self, obs):
-        mu, log_std = self.actor(obs).chunk(2, dim=-1)
+    def forward(self, obs, hlc):
+        mu, log_std = self.actor(obs, hlc).chunk(2, dim=-1)
 
         # constrain log_std inside [log_std_min, log_std_max]
         log_std = torch.tanh(log_std)

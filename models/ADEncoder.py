@@ -112,10 +112,10 @@ class DoubleConv(nn.Module):
         if not mid_channels:
             mid_channels = out_channels
         self.double_conv = nn.Sequential(
-            nn.Conv2d(in_channels, mid_channels, kernel_size=(3, 3), padding=(1, 1)),
+            nn.Conv2d(in_channels, mid_channels, kernel_size=(3, 3), padding=(1, 1), bias=False),
             nn.BatchNorm2d(mid_channels),
             nn.ReLU(inplace=True),
-            nn.Conv2d(mid_channels, out_channels, kernel_size=(3, 3), padding=(1, 1)),
+            nn.Conv2d(mid_channels, out_channels, kernel_size=(3, 3), padding=(1, 1), bias=False),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True)
         )
@@ -304,7 +304,7 @@ class TimmBackbone(nn.Module):
                                                     kernel_size=(1, 1),
                                                     bias=False)
         self.pool_adjust_dim = torch.nn.AdaptiveAvgPool2d((4, 4))
-    
+
     def forward(self, x):
         x = self.conv_input_channels(x)
         x = self.backbone(x)[-1]
@@ -327,7 +327,7 @@ class ADEncoder(nn.Module):
             self.backbone = EfficientNetBackbone(name=backbone)
         elif backbone.lower() in __TIM_MODELS__.keys():
             self.backbone = TimmBackbone(backbone)
-            
+
         self.seg = ImageSegmentationBranch(512, 7)
         self.traffic_light_classifier = TrafficLightClassifier()
         self.vehicle_position = VehicleAffordanceRegressor()
@@ -361,7 +361,6 @@ class ADEncoder(nn.Module):
                 'pedestrian': pedestrian
                 }
 
-
     def encode(self, x):
         x = self.backbone(x)
         return x
@@ -373,7 +372,12 @@ class ADEncoder(nn.Module):
 
 if __name__ == '__main__':
     torch.cuda.empty_cache()
-    sample_input = torch.rand((1, 4, 288, 288)).to('cuda')
     model = ADEncoder(backbone='efficientnet-b0').to('cuda')
-    y = model(sample_input)
-    print(y["segmentation"].shape)
+
+    def call_model():
+        model.encode(torch.rand((4, 4, 288, 288)).to('cuda'))
+
+
+    for _ in range(10):
+        call_model()
+
