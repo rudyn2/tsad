@@ -21,13 +21,14 @@ class PadSequence:
 
 
 class CarlaEmbeddingDataset(Dataset):
-    def __init__(self, embeddings_path: str, json_path: str, provide_ts: bool = False):
+    def __init__(self, embeddings_path: str, json_path: str, provide_ts: bool = False, sequence: bool = False):
         self._path = embeddings_path
         self.json_path = json_path
         self._metadata = None
         self._timestamps = None
         self._provide_ts = provide_ts
         self._timestamp2run = {}
+        self._sequence = sequence
 
         self.read_metadata()
         self.read_timestamps()
@@ -74,16 +75,20 @@ class CarlaEmbeddingDataset(Dataset):
             speed = torch.tensor([metadata['speed_x'], metadata['speed_y'], metadata['speed_y']])
             if self._provide_ts:
                 return torch.tensor(embeddings[:-1]), action, speed, torch.tensor(embeddings[-1]), (run_id, windows_ts[-2])
-            return torch.tensor(embeddings[:-1]), action, speed, torch.tensor(embeddings[-1])
+            
+            if self._sequence:
+                return torch.tensor(embeddings[:-1]), action, speed, torch.tensor(embeddings[1:])
+            else:
+                return torch.tensor(embeddings[:-1]), action, speed, torch.tensor(embeddings[-1])
 
     def __len__(self):
         return sum([len(self._metadata[k]) // 4 for k in self._metadata.keys()])
 
 
 class CarlaOnlineEmbeddingDataset(Dataset):
-    def __init__(self, embeddings_path: str, json_path: str, provide_ts: bool = False):
+    def __init__(self, embeddings_path: str, json_path: str, provide_ts: bool = False, sequence: bool = False):
         super(Dataset, self).__init__()
-        self._source_dataset = CarlaEmbeddingDataset(embeddings_path, json_path, provide_ts)
+        self._source_dataset = CarlaEmbeddingDataset(embeddings_path, json_path, provide_ts, sequence=sequence)
         org_length = self._source_dataset
         self._provide_ts = provide_ts
         self._sequences = [None] * len(org_length)
@@ -119,9 +124,15 @@ class CarlaOnlineEmbeddingDataset(Dataset):
 if __name__ == '__main__':
     from torch.utils.data import DataLoader
 
-    d = CarlaOnlineEmbeddingDataset(embeddings_path='../dataset/embeddings/embeddings.hdf5',
-                                    json_path='../dataset/embeddings/embeddings.json')
+    d = CarlaOnlineEmbeddingDataset(embeddings_path='/home/johnny/Escritorio/batch_3.hdf5',
+                                    json_path='/home/johnny/Escritorio/batch_3.json',
+                                    sequence=True)
     loader = DataLoader(d, batch_size=8, collate_fn=PadSequence(), drop_last=True)
 
     for batch in loader:
         print(batch[0].shape)
+        print(batch[1].shape)
+        print(batch[2].shape)
+        print(batch[3].shape)
+        print(batch[4].shape)
+        break
