@@ -25,6 +25,6 @@ WORKDIR /home/tsad/scripts
 
 
 # Set some envirnonment variables
-ENV PYTHONPATH "${PYTHONPATH}:/tsad/carla_egg/carla-0.9.11-py3.7-linux-x86_64.egg"
+ENV PYTHONPATH "${PYTHONPATH}:/home/tsad/carla_egg/carla-0.9.11-py3.7-linux-x86_64.egg"
 
 # RUN python scripts/train.py
