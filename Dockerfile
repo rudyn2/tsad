@@ -16,14 +16,15 @@ RUN pip install -r requirements.txt
 
 # Copy code
 COPY . /home/tsad/
+COPY carla_egg/carla-0.9.11-py3.7-linux-x86_64.egg /home/tsad/carla_egg/
 #COPY scripts/ /home/tsad/scripts/
 #COPY models/ /home/tsad/models/
 #COPY utils/ /home/tsad/utils/
 RUN mkdir /home/tsad/dataset
 WORKDIR /home/tsad/scripts
 
+
 # Set some envirnonment variables
-# ENV PYTHONPATH "${PYTHONPATH}:/home/carla-dataset-runner/PythonAPI"
-# ENV PYTHONPATH "${PYTHONPATH}:/home/carla-dataset-runner/carla_egg.egg"
+ENV PYTHONPATH "${PYTHONPATH}:/tsad/carla_egg/carla-0.9.11-py3.7-linux-x86_64.egg"
 
 # RUN python scripts/train.py
