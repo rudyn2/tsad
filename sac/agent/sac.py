@@ -142,7 +142,7 @@ class SACAgent(Agent):
             critic_loss += self.critic_loss_weight * (F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q))
         critic_loss /= 4
 
-        # wandb.log({'train_critic/loss': critic_loss})
+        wandb.log({'train_critic/loss': critic_loss})
 
         # Optimize the critic
         self.critic_optimizer.zero_grad(set_to_none=True)
@@ -162,7 +162,7 @@ class SACAgent(Agent):
                 log_prob_e = dist_e.log_prob(torch.clamp(act_e_hlc, min=-1 + 1e-6, max=1.0 - 1e-6)).sum(-1, keepdim=True)
                 bc_loss += - (self.bc_loss_weight * log_prob_e).mean()
             bc_loss /= 4
-            # wandb.log({'train_actor/bc_loss': bc_loss.item()})
+            wandb.log({'train_actor/bc_loss': bc_loss.item()})
 
         # on-policy actor loss
         sac_loss = torch.tensor(.0, device=self.device)
@@ -178,9 +178,9 @@ class SACAgent(Agent):
         total_log_prob /= 4
         sac_loss /= 4
 
-        # wandb.log({'train_actor/sac_loss': sac_loss.item()})
-        # wandb.log({'train_actor/target_entropy': self.target_entropy})
-        # wandb.log({'train_actor/entropy': -total_log_prob.mean().item()})
+        wandb.log({'train_actor/sac_loss': sac_loss.item()})
+        wandb.log({'train_actor/target_entropy': self.target_entropy})
+        wandb.log({'train_actor/entropy': -total_log_prob.mean().item()})
 
         # optimize the actor
         self.actor_optimizer.zero_grad(set_to_none=True)
@@ -192,8 +192,8 @@ class SACAgent(Agent):
         if self.learnable_temperature:
             self.log_alpha_optimizer.zero_grad(set_to_none=True)
             alpha_loss = (self.alpha * (-total_log_prob - self.target_entropy).detach()).mean()
-            # wandb.log({'train_alpha/loss': alpha_loss})
-            # wandb.log({'train_alpha/value': self.alpha})
+            wandb.log({'train_alpha/loss': alpha_loss})
+            wandb.log({'train_alpha/value': self.alpha})
             alpha_loss.backward()
             self.log_alpha_optimizer.step()
 
@@ -202,7 +202,9 @@ class SACAgent(Agent):
 
         obs, act, reward, next_obs, not_done = online_samples
         offline_obs, offline_act, _, _, _ = offline_samples
-        # wandb.log({'train/batch_reward': np.array(reward).mean()})
+
+        rewards = [np.mean(reward[hlc]) for hlc in range(4)]
+        wandb.log({'train/batch_reward': np.array(rewards).mean()})
 
         self.update_critic(obs, act, reward, next_obs, not_done)
 
@@ -219,7 +221,7 @@ class SACAgent(Agent):
         critic_filename = os.path.join(dirname, f"{tag}_critic.pth")
         print(f"Saving actor at: {actor_filename}")
         print(f"Saving critic at: {critic_filename}")
-        # torch.save(self.actor.state_dict(), actor_filename)
-        # torch.save(self.critic_target.state_dict(), critic_filename)
+        torch.save(self.actor.state_dict(), actor_filename)
+        torch.save(self.critic_target.state_dict(), critic_filename)
         wandb.save(actor_filename)
         wandb.save(critic_filename)
