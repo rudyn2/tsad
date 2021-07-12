@@ -8,6 +8,7 @@ from . import Agent
 from sac.agent.actor import DiagGaussianActor
 from sac.agent.critic import DoubleQCritic
 import wandb
+import os
 
 
 class SACAgent(Agent):
@@ -211,3 +212,14 @@ class SACAgent(Agent):
         if step % self.critic_target_update_frequency == 0:
             utils.soft_update_params(self.critic, self.critic_target,
                                      self.critic_tau)
+
+    def save(self, dirname: str, tag: str):
+
+        actor_filename = os.path.join(dirname, f"{tag}_actor.pth")
+        critic_filename = os.path.join(dirname, f"{tag}_critic.pth")
+        print(f"Saving actor at: {actor_filename}")
+        print(f"Saving critic at: {critic_filename}")
+        # torch.save(self.actor.state_dict(), actor_filename)
+        # torch.save(self.critic_target.state_dict(), critic_filename)
+        wandb.save(actor_filename)
+        wandb.save(critic_filename)
