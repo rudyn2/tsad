@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import os
 import sys
 import time
@@ -59,7 +58,7 @@ class SACTrainer(object):
         self.agent = agent
         self.replay_buffer = buffer
         self.logger = RLLogger()
-
+        self.best_average_episode_reward = -1e6
         self.step = 0
 
     def evaluate(self):
@@ -72,11 +71,16 @@ class SACTrainer(object):
             while not done:
                 with utils.eval_mode(self.agent):
                     action = self.agent.act(obs, sample=False)
-                obs, reward, done, _ = self.env.step(action)
+                obs, reward, done, _ = self.env.step(action_proxy(action))
                 episode_reward += reward
 
             average_episode_reward += episode_reward
         average_episode_reward /= self.num_eval_episodes
+
+        if average_episode_reward > self.best_average_episode_reward:
+            self.best_average_episode_reward = average_episode_reward
+            self.agent.save(self.work_dir, f"{self.step}")
+
         wandb.log({'eval/episode_reward': average_episode_reward})
 
     def run(self):
@@ -90,9 +94,9 @@ class SACTrainer(object):
                     start_time = time.time()
 
                 # evaluate agent periodically
-                if self.step > 0 and self.step % self.eval_frequency == 0:
+                if self.step > 0 and episode % self.eval_frequency == 0:
                     wandb.log({'eval/episode': episode})
-                    print("Evaluating...")
+                    print("\nEvaluating...")
                     self.evaluate()
                     print("Done!")
 

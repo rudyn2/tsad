@@ -5,6 +5,7 @@ import numpy as np
 from tqdm import tqdm
 from sac.utils import calc_reward
 from typing import Tuple, Dict
+from collections import defaultdict
 
 
 class ReplayMemoryFast:
@@ -89,40 +90,48 @@ class MixedReplayBuffer(object):
                  offline_buffer_json: str = None):
         self._offline_buffer_hdf5_path = offline_buffer_hdf5
         self._offline_buffer_json_path = offline_buffer_json
-        self._online_buffer = ReplayMemoryFast(online_memory_size)
+
+        # create buffer per each high level command
+        self._online_buffers = {
+            0: ReplayMemoryFast(online_memory_size),    # RIGHT
+            1: ReplayMemoryFast(online_memory_size),    # LEFT
+            2: ReplayMemoryFast(online_memory_size),    # STRAIGHT
+            3: ReplayMemoryFast(online_memory_size)     # LANE FOLLOW
+        }
         self.reward_weights = reward_weights
 
+        self._offline_buffers = None
         if self._offline_buffer_json_path and self._offline_buffer_hdf5_path:
-            self._offline_buffer = self._load()
-        else:
-            self._offline_buffer = None
+            self._offline_buffers = self._load()
 
-    def _get_total_steps(self):
-        total_steps = 0
+    def _build_offline_buffers(self, metadata):
+        buffers_length = defaultdict(int)
         with h5py.File(self._offline_buffer_hdf5_path, "r") as f:
             for run_id in f.keys():
-                total_steps += len(f[run_id])
-        return total_steps
+                for timestep in f[run_id].keys():
+                    buffers_length[self.HLC_TO_NUMBER[metadata[run_id][timestep]['command']]] += 1
 
-    def _load(self) -> ReplayMemoryFast:
+        buffers = {k: ReplayMemoryFast(v) for k, v in buffers_length.items()}
+        return buffers
+
+    def _load(self) -> Dict[int, ReplayMemoryFast]:
         with open(self._offline_buffer_json_path, "r") as f:
             metadata = json.load(f)
 
-        total_offline_steps = self._get_total_steps()
-        offline_buffer = ReplayMemoryFast(memory_size=total_offline_steps)
+        offline_buffers = self._build_offline_buffers(metadata)
         with h5py.File(self._offline_buffer_hdf5_path, "r") as f:
             for run_id in tqdm(list(f.keys()), "Loading dataset"):
                 episode_metadata = metadata[run_id]
                 steps = list(f[run_id].keys())
                 steps = sorted(steps)  # to be sure that they are in order
-                offline_buffer.memory_size += len(steps)
                 for idx in range(len(steps) - 1):
                     step, next_step = steps[idx], steps[idx + 1]
                     not_done = 0 if idx == len(steps) - 1 else 1
                     transition = self._get_transition(f[run_id], episode_metadata, step, next_step)
                     transition = *transition, not_done
-                    offline_buffer.add(*transition)
-        return offline_buffer
+                    # add to some buffer depending on the HLC command of the current observation
+                    offline_buffers[transition[0]['hlc']].add(*transition)
+        return offline_buffers
 
     def _get_transition(self, h5py_group: h5py.File, metadata_json: dict, step: str, next_step: str) \
             -> Tuple[Dict[str, np.ndarray], np.ndarray, float, Dict[str, np.ndarray]]:
@@ -143,42 +152,60 @@ class MixedReplayBuffer(object):
                            float(step_metadata['control']['steer'])])
         return observation, action, reward, next_observation
 
-    def sample(self, batch_size: int, offline: float = 0.25) -> Tuple[list, list]:
+    def sample(self, batch_size: int, offline: float = 0.25):
         """
-        Returns a tuple of offline samples and online samples. <offline> should be the relative size of the
-        offline samples.
+        Returns a sample of experiences. <offline> should be the relative size of the
+        offline samples. The sample is a tuple of 5 elements, one per each data type (obs, act, rew, next_obs, not_done),
+        and is organized as follows:
+            (
+                {
+                    0: [...],   # high level commands
+                    1: [...],
+                    2: [...],
+                    3: [...]
+                }, # end of the observations
+                ...
+            )
         """
         assert 0 <= offline <= 1, f"Offline relative size should be between 0 and 1, got: {offline}"
-        online_batch_size = int(batch_size * (1 - offline))
-        offline_batch_size = batch_size - online_batch_size
+        sub_batch_size = batch_size // 4
+        online_batch_size = (int(sub_batch_size * (1 - offline)))
+        offline_batch_size = (sub_batch_size - online_batch_size)
 
-        offline_samples = []
-        if self._offline_buffer:
-            offline_samples = self._offline_buffer.unpacked_sample(offline_batch_size)
+        # (obs, act, rew, next_obs, not_done)
+        all_online_samples, all_offline_samples = [defaultdict(list) for _ in range(5)], \
+                                                  [defaultdict(list) for _ in range(5)]
+        for hlc in range(4):
+            offline_samples = []
+            if self._offline_buffers:
+                offline_samples = self._offline_buffers[hlc].sample(offline_batch_size)
+            if len(offline_samples) == 0:  # then either the buffer doesn't exists or doesn't have enough samples
+                # so, we try to pull all of them from the online buffer
+                online_samples = self._online_buffers[hlc].sample(sub_batch_size)
+            else:  # if we have samples from the offline buffer, then we just get the missing ones
+                online_samples = self._online_buffers[hlc].sample(online_batch_size)
+                if len(online_samples) == 0:  # then we don't have enough samples in the online buffer
+                    online_samples = self._offline_buffers[hlc].sample(online_batch_size)
+            # save each sub-batch
+            for i, data in enumerate(offline_samples):
+                all_offline_samples[i][hlc].extend(data)
+            for i, data in enumerate(online_samples):
+                all_online_samples[i][hlc].extend(data)
 
-        if len(offline_samples) == 0:  # then either the buffer doesn't exists or doesn't have enough samples
-            # so, we try to pull all of them from the online buffer
-            online_samples = self._online_buffer.unpacked_sample(batch_size)
-        else:  # if we have samples from the offline buffer, then we just get the missing ones
-            online_samples = self._online_buffer.unpacked_sample(online_batch_size)
-            if len(online_samples) == 0:  # then we don't have enough samples in the online buffer
-                online_samples = self._offline_buffer.unpacked_sample(online_batch_size)
-
-        # if it couldn't collect enough samples, return an empty list
-        if len(online_samples) + len(offline_samples) < batch_size:
-            return [], []
-        return offline_samples, online_samples
+        return all_online_samples, all_offline_samples
 
     def add(self, obs, action, reward, next_obs, done):
         """
         Add a transition to the online buffer.
         """
-        self._online_buffer.add(obs, action, reward, next_obs, done)
+        self._online_buffers[obs['hlc']].add(obs, action, reward, next_obs, done)
 
 
 if __name__ == '__main__':
+
     mixed_replay_buffer = MixedReplayBuffer(512,
                                             reward_weights=(0.3, 0.3, 0.3),
                                             offline_buffer_hdf5='../dataset/encodings/encodings.hdf5',
-                                            offline_buffer_json='../dataset/embeddings/clean_1.json')
-    offline, online = mixed_replay_buffer.sample(batch_size=512, offline=0.7)
+                                            offline_buffer_json='../dataset/encodings/encodings.json')
+    offline, online = mixed_replay_buffer.sample(batch_size=32, offline=0.25)
+

@@ -12,6 +12,7 @@ from sac.trainer import SACTrainer
 from models.carla_wrapper import EncodeWrapper
 from sac.replay_buffer import MixedReplayBuffer
 import argparse
+import traceback
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="SAC Trainer",
@@ -36,9 +37,9 @@ if __name__ == '__main__':
     rl_group.add_argument('--control-frequency', default=4, type=int, help='Number of times that a control signal'
                                                                            'is going to be repeated to the environment')
     rl_group.add_argument('--max-episode-steps', default=200, type=int, help='Maximum number of steps per episode.')
-    rl_group.add_argument('--num-eval-episodes', default=5, type=int, help='Number of evaluation episodes.')
+    rl_group.add_argument('--num-eval-episodes', default=3, type=int, help='Number of evaluation episodes.')
     rl_group.add_argument('--num-train-steps', default=1e6, type=int, help='Number of training steps.')
-    rl_group.add_argument('--eval-frequency', default=10000, type=int, help='number of steps between evaluations.')
+    rl_group.add_argument('--eval-frequency', default=10, type=int, help='number of episodes between evaluations.')
     rl_group.add_argument('--speed-reward-weight', default=0.3, type=float, help='Speed reward weight.')
     rl_group.add_argument('--collision-reward-weight', default=0.3, type=float, help='Collision reward weight')
     rl_group.add_argument('--lane-distance-reward-weight', default=0.3, type=float, help='Lane distance reward weight')
@@ -80,6 +81,11 @@ if __name__ == '__main__':
 
     # region: GENERAL PARAMETERS
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    torch.backends.cudnn.benchmark = True
+    torch.autograd.set_detect_anomaly(False)  # speed up training
+    torch.autograd.profiler.profile(False)  # speed up training
+    torch.autograd.profiler.emit_nvtx(False)  # speed up training
+
     control_action_dim = 2
     input_action_dim = 3
     # reward weights for speed, collision and lane distance
@@ -93,8 +99,8 @@ if __name__ == '__main__':
 
     # region: init env
     print(colored("[*] Initializing models", "white"))
-    visual = ADEncoder(backbone='efficientnet-b5')
-    visual.load_state_dict(torch.load(args.vis_weights))
+    visual = ADEncoder(backbone='mobilenetv3_small_075')
+    # visual.load_state_dict(torch.load(args.vis_weights))
     visual.to(device)
     visual.eval()
     visual.freeze()
@@ -104,7 +110,7 @@ if __name__ == '__main__':
                              action__chn=256,
                              speed_chn=256,
                              bidirectional=True)
-    temp.load_state_dict(torch.load(args.temp_weights))
+    # temp.load_state_dict(torch.load(args.temp_weights))
     temp.to(device)
     temp.eval()
     temp.freeze()
@@ -123,7 +129,7 @@ if __name__ == '__main__':
         'walkers': args.walkers,  # number of walkers in the simulation
         'obs_size': 288,  # sensor width and height
         'max_past_step': 1,  # the number of past steps to draw
-        'dt': 0.025,  # time interval between two frames
+        'dt': 1 / 30,  # time interval between two frames
         'reward_weights': reward_weights,  # reward weights [speed, collision, lane distance]
         'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
         'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
@@ -159,6 +165,8 @@ if __name__ == '__main__':
                      action_dim=control_action_dim,
                      batch_size=args.batch_size,
                      offline_proportion=args.bc_proportion,
+                     actor_update_frequency=4,
+                     critic_target_update_frequency=4,
                      actor_weight_decay=args.actor_l2,
                      critic_weight_decay=args.critic_l2)
     print(colored("[*] SAC Agent is ready!", "green"))
@@ -196,6 +204,10 @@ if __name__ == '__main__':
                          )
     try:
         trainer.run()
+    except Exception as e:
+        print(colored("\nEarly stopping due to exception", "red"))
+        traceback.print_exc()
+        print(e)
     finally:
-        print(colored("Stopping", "red"))
+        print(colored("\nTraning finished!", "green"))
         trainer.end()
