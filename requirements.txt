@@ -8,4 +8,6 @@ pytorch-memlab==0.2.3
 pytorch-ignite
 termcolor
 timm
+matplotlib
+opencv-python
 torchvision==0.9.1
