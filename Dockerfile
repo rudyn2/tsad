@@ -7,14 +7,15 @@ USER root
 # RUN echo "deb http://us.archive.ubuntu.com/ubuntu/ bionic main" >> /etc/apt/sources.list
 # RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 3B4FE6ACC0B21F32
 # RUN apt-get update
-RUN apt-get install ffmpeg libsm6 libxext6  -y
-RUN apt-get install libjpeg-turbo8 -y
 
 RUN mkdir /home/tsad
 WORKDIR /home/tsad
 COPY requirements.txt /home/tsad/requirements.txt
 RUN apt-get update
 RUN pip install -r requirements.txt
+RUN apt-get install ffmpeg libsm6 libxext6  -y
+RUN apt-get install libjpeg-turbo8 -y
+
 
 # Copy code
 COPY . /home/tsad/
