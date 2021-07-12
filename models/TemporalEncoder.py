@@ -183,17 +183,34 @@ class SequenceRNNEncoder(nn.Module):
         # Cat embeddings and action (B, 4, 8192) + (B, 4, speed_chn) + (B, 4, action_chn) =>
         # (B, 4, 8192 + speed_chn + action_chn)
         action_emb = torch.cat((vis_embedding, action_cod, speed_cod), dim=2)
-
         y, h = self.lstm(action_emb, hidden)
         # y shape (B, 4, hidden_size*bidirectional) => (4*B, hidden_size*bidirectional) => (4*B, 512*4*4)
         y = self.output_fc(y.reshape(y.shape[0]*y.shape[1], -1))
         return y.view(embedding.shape), h
-    
+
+    def encode(self, embedding, action, speed, hidden=None):
+        # Action (B, 3) => (B, action_chn) => (B, 1, action_chn)
+        action_cod = self.action_cod(action).unsqueeze(dim=1)
+        # Action (B, 1, action_chn) => (B, 4, action_chn)
+        # Speed (B, 3) => (B, 1, speed_chn)
+        speed_cod = self.speed_cod(speed).unsqueeze(dim=1)
+        # Speed (B, 1, speed_chn) => (B, 4, speed_chn)
+
+        # (B, T, 512, 4, 4) => (B, T, 8192)
+        vis_embedding = embedding.view(embedding.shape[0], embedding.shape[1], -1)
+
+        # Cat embeddings and action (B, 4, 8192) + (B, 4, speed_chn) + (B, 4, action_chn) =>
+        # (B, 4, 8192 + speed_chn + action_chn)
+        action_emb = torch.cat((vis_embedding, action_cod, speed_cod), dim=2)
+
+        y, h = self.lstm(action_emb, hidden)
+        return y, h
+
     def init_hidden(self, batch_size, device='cpu'):
         h_shape = (self.bidirectinal*self.num_layers, batch_size, self.hidden_size)
         h0 = torch.zeros(h_shape, requires_grad=False).to(device)
         h1 = torch.zeros(h_shape, requires_grad=False).to(device)
-        return (h0, h1)
+        return h0, h1
 
     def freeze(self):
         for param in self.parameters():

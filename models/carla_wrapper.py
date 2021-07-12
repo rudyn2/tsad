@@ -30,7 +30,8 @@ class EncodeWrapper(Wrapper):
         self._temporal_encoder.to(self._device)
 
         self.step_ = 0
-        self._visual_buffer = deque(maxlen=4)
+        self._visual_buffer = None
+        self._hidden_temp = self._temporal_encoder.init_hidden(1, device=self._device)
         self._last_speed = None
         self._debug = debug
 
@@ -48,26 +49,14 @@ class EncodeWrapper(Wrapper):
         """
         Warm-up. Fill the buffer with the last 4 observations.
         """
-        self._visual_buffer.clear()
         obs = self.env.reset()
 
-        # load 4 frames (needed for temporal encoder)
         encoded_obs = self.create_visual_encoding(obs)
-        self._visual_buffer.append(encoded_obs)
-        for _ in range(3):
-            # execute a neutral action to load buffer
-            obs, _, _, _ = self.env.step([0, 0, 0])
+        self._visual_buffer = encoded_obs
+        self._hidden_temp = self._temporal_encoder.init_hidden(1, device=self._device)
+        self._last_speed = obs['speed']
 
-            # encode received observation
-            encoded_obs = self.create_visual_encoding(obs)
-
-            # save in buffer and update last speed
-            self._last_speed = obs['speed']
-            self._visual_buffer.append(encoded_obs)
-
-        # neutral step to begin
-        # this is needed to include the temporal encoding
-        return self._step([0, 0, 0])[0]
+        return encoded_obs
 
     def _step(self, action: list) -> Tuple[Dict, float, bool, dict]:
         """
@@ -80,15 +69,15 @@ class EncodeWrapper(Wrapper):
         observation, reward, done, info = self.env.step(action)
 
         # create actual encoding using provided action
-        temporal_encoding = self.create_temporal_encoding(action)  # (1, 512, 4, 4)
+        hidden_state, temporal_encoding = self.create_temporal_encoding(action)  # (1, 512, 4, 4)
 
         # save new state (next observation)
         visual_encoding = self.create_visual_encoding(observation)  # (1, 512, 4, 4)
-        self._visual_buffer.append(visual_encoding)
+        self._visual_buffer = visual_encoding
+        self._hidden_temp = hidden_state
         self._last_speed = observation['speed']
 
-        encoding = torch.cat([visual_encoding.to(self._device),
-                              temporal_encoding], dim=1).squeeze(0)
+        encoding = torch.cat([visual_encoding, temporal_encoding], dim=1).squeeze(0)
 
         obs = {
             "encoding": encoding,
@@ -104,20 +93,17 @@ class EncodeWrapper(Wrapper):
             self._step(action)
         return self._step(action)
 
-    def create_temporal_encoding(self, action: list) -> Tensor:
+    def create_temporal_encoding(self, action: list) -> Tuple[tuple, Tensor]:
         """
         Given the last 4 simulation steps, it creates a temporal encoding using provided RNN. In order to achieve that,
         the RNN is trying to predict the next simulation step.
         """
-        stacked_frames = torch.cat([self._visual_buffer[0],
-                                    self._visual_buffer[1],
-                                    self._visual_buffer[2],
-                                    self._visual_buffer[3]], dim=0).unsqueeze(0).float()
-        stacked_frames = stacked_frames.to(self._device)
         action = torch.tensor(action, device=self._device).unsqueeze(0).float()
         speed = torch.tensor(self._last_speed, device=self._device).unsqueeze(0).float()
-        temporal_encoding = self._temporal_encoder.forward(stacked_frames, action, speed)
-        return temporal_encoding
+        _, hidden_state = self._temporal_encoder.encode(self._visual_buffer.unsqueeze(0),
+                                                             action, speed, self._hidden_temp)
+        temporal_encoding = hidden_state[0].reshape(-1, 4, 4).unsqueeze(0)
+        return hidden_state, temporal_encoding
 
     def create_visual_encoding(self, observation: Dict[str, np.ndarray]) -> Tensor:
         """
@@ -129,13 +115,13 @@ class EncodeWrapper(Wrapper):
             cv2.waitKey(10)
         obs = self._format_observation(observation)
         encoded_obs = self._visual_encoder.encode(obs)
-        encoded_obs = encoded_obs.detach().cpu()
+        encoded_obs = encoded_obs.detach()
         return encoded_obs
 
 
 if __name__ == '__main__':
     from ADEncoder import ADEncoder
-    from TemporalEncoder import VanillaRNNEncoder
+    from TemporalEncoder import SequenceRNNEncoder
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     vis_weights = r'C:\Users\C0101\Documents\tsad\dataset\weights\best_model_1_validation_accuracy=-0.5557.pt'
@@ -147,12 +133,12 @@ if __name__ == '__main__':
     visual.eval()
     visual.freeze()
 
-    temp = VanillaRNNEncoder(num_layers=4,
-                             hidden_size=1024,
-                             action__chn=256,
-                             speed_chn=256,
-                             bidirectional=True)
-    temp.load_state_dict(torch.load(temp_weights))
+    temp = SequenceRNNEncoder(num_layers=4,
+                              hidden_size=1024,
+                              action__chn=256,
+                              speed_chn=256,
+                              bidirectional=True)
+    # temp.load_state_dict(torch.load(temp_weights))
     temp.to(device)
     temp.eval()
     temp.freeze()
@@ -166,7 +152,7 @@ if __name__ == '__main__':
         # simulation parameters
         'verbose': False,
         'vehicles': 100,  # number of vehicles in the simulation
-        'walkers': 0,     # number of walkers in the simulation
+        'walkers': 0,  # number of walkers in the simulation
         'obs_size': 288,  # sensor width and height
         'max_past_step': 1,  # the number of past steps to draw
         'dt': 0.025,  # time interval between two frames
@@ -188,3 +174,6 @@ if __name__ == '__main__':
     for i in range(100):
         obs, reward, done, info = carla_processed_env.step([1, 0, 0])
         print(f"step={i}, encoding shape: {obs['encoding'].shape}, rew={reward:.2f}")
+        if done:
+            carla_processed_env.reset()
+            break
