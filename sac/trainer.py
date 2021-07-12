@@ -72,7 +72,7 @@ class SACTrainer(object):
             while not done:
                 with utils.eval_mode(self.agent):
                     action = self.agent.act(obs, sample=False)
-                obs, reward, done, _ = self.env.step(action)
+                obs, reward, done, _ = self.env.step(action_proxy(action))
                 episode_reward += reward
 
             average_episode_reward += episode_reward
@@ -90,9 +90,9 @@ class SACTrainer(object):
                     start_time = time.time()
 
                 # evaluate agent periodically
-                if self.step > 0 and self.step % self.eval_frequency == 0:
+                if self.step > 0 and episode % self.eval_frequency == 0:
                     wandb.log({'eval/episode': episode})
-                    print("Evaluating...")
+                    print("\nEvaluating...")
                     self.evaluate()
                     print("Done!")
 

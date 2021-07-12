@@ -12,6 +12,7 @@ from sac.trainer import SACTrainer
 from models.carla_wrapper import EncodeWrapper
 from sac.replay_buffer import MixedReplayBuffer
 import argparse
+import traceback
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="SAC Trainer",
@@ -36,9 +37,9 @@ if __name__ == '__main__':
     rl_group.add_argument('--control-frequency', default=4, type=int, help='Number of times that a control signal'
                                                                            'is going to be repeated to the environment')
     rl_group.add_argument('--max-episode-steps', default=200, type=int, help='Maximum number of steps per episode.')
-    rl_group.add_argument('--num-eval-episodes', default=5, type=int, help='Number of evaluation episodes.')
+    rl_group.add_argument('--num-eval-episodes', default=3, type=int, help='Number of evaluation episodes.')
     rl_group.add_argument('--num-train-steps', default=1e6, type=int, help='Number of training steps.')
-    rl_group.add_argument('--eval-frequency', default=10000, type=int, help='number of steps between evaluations.')
+    rl_group.add_argument('--eval-frequency', default=10, type=int, help='number of episodes between evaluations.')
     rl_group.add_argument('--speed-reward-weight', default=0.3, type=float, help='Speed reward weight.')
     rl_group.add_argument('--collision-reward-weight', default=0.3, type=float, help='Collision reward weight')
     rl_group.add_argument('--lane-distance-reward-weight', default=0.3, type=float, help='Lane distance reward weight')
@@ -128,7 +129,7 @@ if __name__ == '__main__':
         'walkers': args.walkers,  # number of walkers in the simulation
         'obs_size': 288,  # sensor width and height
         'max_past_step': 1,  # the number of past steps to draw
-        'dt': 0.025,  # time interval between two frames
+        'dt': 1/30,  # time interval between two frames
         'reward_weights': reward_weights,  # reward weights [speed, collision, lane distance]
         'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
         'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
@@ -205,6 +206,7 @@ if __name__ == '__main__':
         trainer.run()
     except Exception as e:
         print(colored("\nEarly stopping due to exception", "red"))
+        traceback.print_exc()
         print(e)
     finally:
         print(colored("\nTraning finished!", "green"))
