@@ -82,9 +82,9 @@ if __name__ == '__main__':
     # region: GENERAL PARAMETERS
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     torch.backends.cudnn.benchmark = True
-    torch.autograd.set_detect_anomaly(False)    # speed up training
-    torch.autograd.profiler.profile(False)      # speed up training
-    torch.autograd.profiler.emit_nvtx(False)    # speed up training
+    torch.autograd.set_detect_anomaly(False)  # speed up training
+    torch.autograd.profiler.profile(False)  # speed up training
+    torch.autograd.profiler.emit_nvtx(False)  # speed up training
 
     control_action_dim = 2
     input_action_dim = 3
@@ -99,7 +99,7 @@ if __name__ == '__main__':
 
     # region: init env
     print(colored("[*] Initializing models", "white"))
-    visual = ADEncoder(backbone='efficientnet-b5')
+    visual = ADEncoder(backbone='mobilenetv3_small_075')
     # visual.load_state_dict(torch.load(args.vis_weights))
     visual.to(device)
     visual.eval()
@@ -110,7 +110,7 @@ if __name__ == '__main__':
                              action__chn=256,
                              speed_chn=256,
                              bidirectional=True)
-    temp.load_state_dict(torch.load(args.temp_weights))
+    # temp.load_state_dict(torch.load(args.temp_weights))
     temp.to(device)
     temp.eval()
     temp.freeze()
@@ -129,7 +129,7 @@ if __name__ == '__main__':
         'walkers': args.walkers,  # number of walkers in the simulation
         'obs_size': 288,  # sensor width and height
         'max_past_step': 1,  # the number of past steps to draw
-        'dt': 1/30,  # time interval between two frames
+        'dt': 1 / 30,  # time interval between two frames
         'reward_weights': reward_weights,  # reward weights [speed, collision, lane distance]
         'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
         'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
