@@ -56,7 +56,7 @@ class EncodeWrapper(Wrapper):
         self._hidden_temp = self._temporal_encoder.init_hidden(1, device=self._device)
         self._last_speed = obs['speed']
 
-        return encoded_obs
+        return self._step([0, 0, 0])[0]
 
     def _step(self, action: list) -> Tuple[Dict, float, bool, dict]:
         """
