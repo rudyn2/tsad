@@ -198,7 +198,7 @@ class MixedReplayBuffer(object):
         """
         Add a transition to the online buffer.
         """
-        self._online_buffers[obs['hlc']].add(obs, action, reward, next_obs, done)
+        self._online_buffers[int(obs['hlc'])].add(obs, action, reward, next_obs, done)
 
 
 if __name__ == '__main__':
