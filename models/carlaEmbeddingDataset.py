@@ -21,6 +21,9 @@ class PadSequence:
 
 
 class CarlaEmbeddingDataset(Dataset):
+    """
+    It delivers sequences of length 4 as the
+    """
     def __init__(self, embeddings_path: str, json_path: str, provide_ts: bool = False, sequence: bool = False):
         self._path = embeddings_path
         self.json_path = json_path

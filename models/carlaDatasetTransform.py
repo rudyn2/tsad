@@ -205,9 +205,6 @@ class ActorComposition(object):
         return rgb1, semantic1, depth1, processed
 
 
-
-
-
 if __name__ == '__main__':
     import matplotlib.pyplot as plt
     from carlaDatasetSimple import CarlaDatasetSimple
