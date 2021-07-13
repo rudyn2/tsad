@@ -4,7 +4,7 @@ import wandb
 import torch
 from gym_carla.envs.carla_env import CarlaEnv
 from models.ADEncoder import ADEncoder
-from models.TemporalEncoder import VanillaRNNEncoder
+from models.TemporalEncoder import SequenceRNNEncoder
 from sac.agent.sac import SACAgent
 from sac.agent.actor import DiagGaussianActor
 from sac.agent.critic import DoubleQCritic
@@ -105,11 +105,11 @@ if __name__ == '__main__':
     visual.eval()
     visual.freeze()
 
-    temp = VanillaRNNEncoder(num_layers=2,
-                             hidden_size=1024,
-                             action__chn=1024,
-                             speed_chn=1024,
-                             bidirectional=True)
+    temp = SequenceRNNEncoder(num_layers=2,
+                              hidden_size=1024,
+                              action__chn=1024,
+                              speed_chn=1024,
+                              bidirectional=True)
     temp.load_state_dict(torch.load(args.temp_weights))
     temp.to(device)
     temp.eval()
