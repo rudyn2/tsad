@@ -64,13 +64,13 @@ class Actor(nn.Module):
     def __init__(self, hidden_size: int, action_dim: int = 2):
         super(Actor, self).__init__()
         self._device = 'cuda'
-        self._input_channels = 1024
+        self._input_channels = 768
         self._action_dim = action_dim
         self._hidden_size = hidden_size
         self.conv_reduction = ConvReduction(self._input_channels)
         self.speed_mlp = TwoLayerMLP(3, 256, 128)
 
-        input_size = 1152
+        input_size = 896
         self.branches = torch.nn.ModuleDict({
             'left': TwoLayerMLP(input_size, hidden_size, self._action_dim * 2),
             'right': TwoLayerMLP(input_size, hidden_size, self._action_dim * 2),
@@ -108,13 +108,13 @@ class Critic(nn.Module):
 
     def __init__(self, hidden_dim: int, action_dim: int):
         super(Critic, self).__init__()
-        self._input_channels = 1024
+        self._input_channels = 768
         self._device = 'cuda'
         self.conv_reduction = ConvReduction(self._input_channels)
         self.speed_mlp = TwoLayerMLP(3, 256, 128)
         self.action_mlp = TwoLayerMLP(action_dim, 256, 128)
 
-        input_size = 1280
+        input_size = 1024
         self.branches = torch.nn.ModuleDict({
             'left': TwoLayerMLP(input_size, hidden_dim, 1),
             'right': TwoLayerMLP(input_size, hidden_dim, 1),
