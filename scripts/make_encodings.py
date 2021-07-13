@@ -1,5 +1,5 @@
 from models.carlaEmbeddingDataset import CarlaOnlineEmbeddingDataset
-from models.TemporalEncoder import VanillaRNNEncoder
+from models.TemporalEncoder import SequenceRNNEncoder
 from utils.json_saver import JsonSaver
 import argparse
 import torch
@@ -28,7 +28,7 @@ class Encoder(object):
 
     def __init__(self,
                  embedding_dataset: CarlaOnlineEmbeddingDataset,
-                 temp_model: VanillaRNNEncoder,
+                 temp_model: SequenceRNNEncoder,
                  output_path: str):
         self._embedding_dataset = embedding_dataset
         self._temp_model = temp_model
@@ -64,11 +64,11 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     # create model
-    model = VanillaRNNEncoder(num_layers=4,
-                              hidden_size=1024,
-                              action__chn=256,
-                              speed_chn=256,
-                              bidirectional=True)
+    model = SequenceRNNEncoder(num_layers=2,
+                               hidden_size=1024,
+                               action__chn=1024,
+                               speed_chn=1024,
+                               bidirectional=True)
     model.load_state_dict(torch.load(args.weights))
     model.to(args.device)
     model.eval()
