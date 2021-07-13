@@ -5,7 +5,10 @@ import argparse
 import torch
 from collections import defaultdict
 import h5py
+import json
 from tqdm import tqdm
+import torchvision.transforms as T
+import numpy as np
 
 
 class HDF5EncodingSaver:
@@ -19,6 +22,15 @@ class HDF5EncodingSaver:
             for timestamp, encoding in data.items():
                 run_group.create_dataset(timestamp, data=encoding)
 
+    def write_ts(self, run_id: str, step: str, data):
+        with h5py.File(self._path, mode='a') as f:
+            if run_id not in f.keys():
+                run_group = f.create_group(run_id)
+            else:
+                run_group = f[run_id]
+            if step not in f[run_id].keys():
+                run_group.create_dataset(step, data=data)
+
 
 class Encoder(object):
     """
@@ -27,36 +39,57 @@ class Encoder(object):
     """
 
     def __init__(self,
-                 carla_dataset: CarlaEncodingDataset,
+                 data: str,
                  visual_model: ADEncoder,
                  temp_model: SequenceRNNEncoder,
                  output_path: str):
-        self._carla_dataset = carla_dataset
+        self._hdf5_path = data + '.hdf5'
+        self._json_path = data + '.json'
         self._temp_model = temp_model
         self._visual_model = visual_model
         self._device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self._hdf5_saver = HDF5EncodingSaver(output_path)
 
+        self.to_tensor = T.ToTensor()
+
     def encode(self):
-        data = defaultdict(dict)
-        hidden = self._temp_model.init_hidden(batch_size=1, device=self._device)
-        for idx in tqdm(range(len(self._carla_dataset)), "Encoding..."):
-            x, act, speed, ts = self._carla_dataset[idx]
-            x = x.to(self._device).unsqueeze(0)  # x: (1, 4, 224, 288)
-            act = act.to(self._device).unsqueeze(0)  # act: (1, 3)
-            speed = speed.to(self._device).unsqueeze(0)  # speed: (1, 3)
 
-            # generate the visual and temporal encodings
-            visual_encoding = self._visual_model.encode(x)  # visual_encoding: (1, 512, 4, 4)
-            _, hidden = self._temp_model.encode(visual_encoding.unsqueeze(0), act, speed, hidden=hidden)
-            temporal_encoding = hidden[0].reshape(-1, 4, 4).unsqueeze(0)
+        with open(self._json_path, "r") as f:
+            all_metadata = json.load(f)
 
-            # concatenate
-            encoding = torch.cat([visual_encoding, temporal_encoding], dim=1).squeeze(0)
-            data[ts[0]][ts[1]] = encoding.detach().cpu().numpy()
+        with h5py.File(self._hdf5_path, "r") as f:
+            pbar = tqdm(iterable=f.keys(), total=len(f.keys()), desc='')
+            for run_id in pbar:
+                pbar.desc = f"Encoding {run_id}"
 
-        for run_id, data in tqdm(data.items(), "Saving..."):
-            self._hdf5_saver.write_batch(run_id, data)
+                hidden = self._temp_model.init_hidden(batch_size=1, device=self._device)
+                for ts in f[run_id].keys():
+                    rgb = np.array(f[run_id][ts]['rgb'])
+                    depth = np.array(f[run_id][ts]['depth'])
+
+                    # process and stack
+                    rgb_transformed = self.to_tensor(rgb)
+                    depth_transformed = torch.tensor(depth).unsqueeze(0) / 1000
+                    input_ = torch.cat([depth_transformed, rgb_transformed]).float()
+                    input_ = input_[:, 64:, :]
+                    input_ = input_.unsqueeze(0).to(self._device)
+
+                    metadata = all_metadata[run_id][ts]
+                    action = torch.tensor(
+                        [metadata['control']['steer'], metadata['control']['throttle'], metadata['control']['brake']],
+                        device=self._device).unsqueeze(0)
+                    speed = torch.tensor([metadata['speed_x'], metadata['speed_y'], metadata['speed_y']],
+                                         device=self._device).unsqueeze(0)
+
+                    # generate the visual and temporal encodings
+                    visual_encoding = self._visual_model.encode(input_)  # visual_encoding: (1, 512, 4, 4)
+                    _, hidden = self._temp_model.encode(visual_encoding.unsqueeze(0), action, speed, hidden=hidden)
+                    temporal_encoding = hidden[0].reshape(-1, 4, 4).unsqueeze(0)
+
+                    # concatenate
+                    encoding = torch.cat([visual_encoding, temporal_encoding], dim=1).squeeze(0)
+                    self._hdf5_saver.write_ts(run_id, ts, data=encoding.detach().cpu().numpy())
+                pbar.update(1)
         print("")
 
 
@@ -88,9 +121,7 @@ if __name__ == '__main__':
     visual_model.eval()
 
     # instantiate dataset
-    dataset = CarlaEncodingDataset(hdf5_path=args.data + '.hdf5',
-                                   json_path=args.data + '.json')
-    extractor = Encoder(carla_dataset=dataset,
+    extractor = Encoder(data=args.data,
                         visual_model=visual_model,
                         temp_model=temp_model,
                         output_path=args.output)
