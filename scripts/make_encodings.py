@@ -71,7 +71,6 @@ class Encoder(object):
                     rgb_transformed = self.to_tensor(rgb)
                     depth_transformed = torch.tensor(depth).unsqueeze(0) / 1000
                     input_ = torch.cat([depth_transformed, rgb_transformed]).float()
-                    input_ = input_[:, 64:, :]
                     input_ = input_.unsqueeze(0).to(self._device)
 
                     metadata = all_metadata[run_id][ts]

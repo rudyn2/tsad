@@ -100,17 +100,17 @@ if __name__ == '__main__':
     # region: init env
     print(colored("[*] Initializing models", "white"))
     visual = ADEncoder(backbone='mobilenetv3_small_075')
-    # visual.load_state_dict(torch.load(args.vis_weights))
+    visual.load_state_dict(torch.load(args.vis_weights))
     visual.to(device)
     visual.eval()
     visual.freeze()
 
-    temp = VanillaRNNEncoder(num_layers=4,
+    temp = VanillaRNNEncoder(num_layers=2,
                              hidden_size=1024,
-                             action__chn=256,
-                             speed_chn=256,
+                             action__chn=1024,
+                             speed_chn=1024,
                              bidirectional=True)
-    # temp.load_state_dict(torch.load(args.temp_weights))
+    temp.load_state_dict(torch.load(args.temp_weights))
     temp.to(device)
     temp.eval()
     temp.freeze()
