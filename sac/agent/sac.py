@@ -137,7 +137,6 @@ class SACAgent(Agent):
             target_V = torch.min(target_Q1, target_Q2) - self.alpha.detach() * log_prob
             target_Q = self._to_tensor(reward[hlc]) + (self._to_tensor(not_done[hlc]) * self.discount * target_V).float()
             target_Q = target_Q.detach()
-
             current_Q1, current_Q2 = self.critic(obs[hlc], self._to_tensor(act[hlc]).float(), hlc=hlc)
             critic_loss += self.critic_loss_weight * (F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q))
         critic_loss /= 4
