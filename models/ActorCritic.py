@@ -129,7 +129,7 @@ class Critic(nn.Module):
         if isinstance(action, list) or isinstance(action, tuple):
             action = torch.stack([torch.tensor(a) for a in action]).to(self._device)
 
-        x = self.conv_reduction(encoding)  # 1024x4x4 -> 1024
+        x = self.conv_reduction(encoding)  # (B),C,W,H -> (B),C
         speed_embedding = self.speed_mlp(speed)
         action_embedding = self.action_mlp(action)
         x_speed_action = torch.cat([x, speed_embedding, action_embedding], dim=1)  # [1024, 128, 128] -> 1280
