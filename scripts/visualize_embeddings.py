@@ -10,7 +10,7 @@ import sys
 
 sys.path.append('..')
 from models.carlaEmbeddingDataset import CarlaOnlineEmbeddingDataset, PadSequence, CarlaEmbeddingDataset
-from models.TemporalEncoder import RNNEncoder, VanillaRNNEncoder
+from models.TemporalEncoder import RNNEncoder, VanillaRNNEncoder, SequenceRNNEncoder
 from models.ADEncoder import ADEncoder
 
 
@@ -46,6 +46,9 @@ if __name__ == "__main__":
     parser.add_argument('--speed-channels', default=128, type=int, help='Number of channels in speed codification')
     parser.add_argument('--rnn-model', default='vanilla', type=str, help='Which rnn model use: "vanilla" or "convol"')
     parser.add_argument('--bidirectional', action='store_true', help='Whether to use bidirectional LSTM or not.')
+
+    parser.add_argument('--use-sequence', action='store_true', help='Whether to use embeddings [0:n] to predict [1:n+1] or just n+1.')
+    parser.add_argument('--force-timm', action='store_true', help='Whether to use timm library or not, only used when backbone is efficientnet.')
     args = parser.parse_args()
 
     if not os.path.exists(args.img_folder):
@@ -53,50 +56,60 @@ if __name__ == "__main__":
 
     device = args.device
     if args.dataset == 'online':
-        dataset = CarlaOnlineEmbeddingDataset(embeddings_path=args.embeddings, json_path=args.metadata)
+        dataset = CarlaOnlineEmbeddingDataset(embeddings_path=args.embeddings, json_path=args.metadata, sequence=args.use_sequence)
     else:
-        dataset = CarlaEmbeddingDataset(embeddings_path=args.embeddings, json_path=args.metadata)
+        dataset = CarlaEmbeddingDataset(embeddings_path=args.embeddings, json_path=args.metadata, sequence=args.use_sequence)
 
     loader = DataLoader(dataset, batch_size=args.batch_size, collate_fn=PadSequence())
 
-    if args.rnn_model == "vanilla":
-        temp_model = VanillaRNNEncoder(
-            num_layers=args.num_layers,
+    if args.use_sequence:
+        temp_model = SequenceRNNEncoder(
+            num_layers=args.num_layers, 
             hidden_size=args.hidden_size,
             action__chn=args.action_channels,
             speed_chn=args.speed_channels,
             bidirectional=args.bidirectional,
-        )
+            )
+    elif args.rnn_model == "vanilla":
+        temp_model = VanillaRNNEncoder(
+            num_layers=args.num_layers, 
+            hidden_size=args.hidden_size,
+            action__chn=args.action_channels,
+            speed_chn=args.speed_channels,
+            bidirectional=args.bidirectional,
+            )
     elif args.rnn_model == "convol":
         temp_model = RNNEncoder(
-            num_layers=args.num_layers,
+            num_layers=args.num_layers, 
             hidden_size=args.hidden_size,
             action__chn=args.action_channels,
             speed_chn=args.speed_channels
         )
     else:
-        raise NotImplementedError('Model not implemented')
+        raise ValueError('Model not implemented')
 
     temp_model.load_state_dict(torch.load(args.temp_weights))
     temp_model.to(args.device)
     temp_model.eval()
 
     # create model
-    vis_model = ADEncoder(backbone=args.backbone)
+    vis_model = ADEncoder(backbone=args.backbone, use_timm=args.force_timm)
     vis_model.load_state_dict(torch.load(args.vis_weights))
     vis_model.to(args.device)
     vis_model.eval()
+
+    h = temp_model.init_hidden(args.batch_size, device=device)
 
     for i, (embeddings, embeddings_length, actions, speeds, embeddings_label) in enumerate(loader):
         embeddings, embeddings_label, actions, speeds = embeddings.to(args.device), embeddings_label.to(
             args.device), actions.to(
             args.device), speeds.to(args.device)
-        pred_embedding = temp_model(embeddings, actions, speeds, embeddings_length)
+        pred_embedding, h = temp_model(embeddings, actions, speeds, hidden=h)
 
-        output_expected = vis_model.decode(embeddings_label)
+        output_expected = vis_model.decode(embeddings_label[:, -1, :, :, :])
         segmentation = output_expected['segmentation'].argmax(dim=1)
 
-        output_predicted = vis_model.decode(pred_embedding)
+        output_predicted = vis_model.decode(pred_embedding[:, -1, :, :, :])
         pred_segmentation = output_predicted['segmentation'].argmax(dim=1)
 
         vmin = pred_segmentation.min()

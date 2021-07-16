@@ -84,7 +84,6 @@ class SACTrainer(object):
         wandb.log({'eval/episode_reward': average_episode_reward})
 
     def run(self):
-        last_action = None
         episode, episode_reward, done, episode_step = 0, 0, 0, True
         obs = self.env.reset()
         start_time = time.time()
@@ -120,12 +119,6 @@ class SACTrainer(object):
 
             # AGENT ACTION DIM PROXY: 2 -> 3
             action = action_proxy(action)
-            if last_action is None:
-                last_action = action
-            else:
-                action = (1/3) * np.array(action) + (2/3) * np.array(last_action)
-                last_action = action
-                action = list(action)
 
             # run training update
             if self.step >= self.num_seed_steps:
