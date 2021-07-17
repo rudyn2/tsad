@@ -130,7 +130,7 @@ class SACAgent(Agent):
 
     def update_critic(self, obs, act, reward, next_obs, not_done):
 
-        critic_loss = torch.tensor(.0, device=self.device, requires_grad=True).float()
+        critic_loss = torch.tensor(.0, device=self.device).float()
         for hlc in obs.keys():
             dist = self.actor(next_obs[hlc], hlc=hlc)
             next_action = dist.rsample()
@@ -160,7 +160,7 @@ class SACAgent(Agent):
         # behavioral cloning component
         bc_loss = None
         if obs_e and act_e:
-            bc_loss = torch.tensor(.0, device=self.device, requires_grad=True)
+            bc_loss = torch.tensor(.0, device=self.device)
             for hlc in obs.keys():
                 dist_e = self.actor(obs_e[hlc], hlc=hlc)
                 act_e_hlc = self.act_parser_invert(self._to_tensor(act_e[hlc]))
@@ -172,8 +172,8 @@ class SACAgent(Agent):
             wandb.log({'train_actor/bc_loss': bc_loss.item()})
 
         # on-policy actor loss
-        sac_loss = torch.tensor(.0, device=self.device, requires_grad=True)
-        total_log_prob = torch.tensor(.0, device=self.device, requires_grad=True)
+        sac_loss = torch.tensor(.0, device=self.device)
+        total_log_prob = torch.tensor(.0, device=self.device)
         for hlc in obs.keys():
             dist = self.actor(obs[hlc], hlc=hlc)
             action = dist.rsample()

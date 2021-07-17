@@ -209,7 +209,7 @@ class MixedReplayBuffer(object):
                 s += f"{k}: {len(self._offline_buffers[k])} samples\n"
         else:
             s += "\nNo offline buffer"
-        s += "\nOnline buffers:"
+        s += "\nOnline buffers:\n"
         for k in self._online_buffers.keys():
             s += f"{k}: {len(self._online_buffers[k])} samples\n"
         return s
