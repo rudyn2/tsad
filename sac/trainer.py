@@ -88,6 +88,7 @@ class SACTrainer(object):
         episode, episode_reward, done, episode_step = 0, 0, 0, True
         obs = self.env.reset()
         start_time = time.time()
+        self.agent.train()
         while self.step < self.num_train_steps:
             if done:
                 if self.step > 0:
