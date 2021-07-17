@@ -210,7 +210,7 @@ class MixedReplayBuffer(object):
             print(colored("No offline buffer", "red"))
         print(colored("Online buffers:", "green"))
         for k in self._online_buffers.keys():
-            print(colored(f"{k}: {len(self._offline_buffers[k])} samples"), "white")
+            print(colored(f"{k}: {len(self._online_buffers[k])} samples"), "white")
 
 
 if __name__ == '__main__':
