@@ -210,7 +210,7 @@ class SACAgent(Agent):
             self.log_alpha_optimizer.step()
 
     def update(self, replay_buffer, step):
-        offline_samples, online_samples = replay_buffer.sample(self.batch_size, self.offline_proportion)
+        online_samples, offline_samples = replay_buffer.sample(self.batch_size, self.offline_proportion)
 
         obs, act, reward, next_obs, not_done = online_samples
         offline_obs, offline_act, _, _, _ = offline_samples

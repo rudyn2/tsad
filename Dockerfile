@@ -22,7 +22,6 @@ COPY . /home/tsad/
 COPY carla_egg/carla-0.9.11-py3.7-linux-x86_64.egg /home/tsad/carla_egg/
 COPY wheels/gym_carla-0.1.0-py3-none-any.whl /home/tsad/gym_carla-0.1.0-py3-none-any.whl
 RUN pip install gym_carla-0.1.0-py3-none-any.whl
-RUN pip install torchvision==0.9.1
 
 #COPY scripts/ /home/tsad/scripts/
 #COPY models/ /home/tsad/models/
