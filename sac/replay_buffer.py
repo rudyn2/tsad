@@ -202,15 +202,17 @@ class MixedReplayBuffer(object):
         self._online_buffers[int(obs['hlc'])].add(obs, action, reward, next_obs, done)
 
     def log_status(self):
+        s = ""
         if self._offline_buffers is not None:
-            print(colored("Offline buffers:", "green"))
+            s += "\nOffline buffers:"
             for k in self._offline_buffers.keys():
-                print(colored(f"{k}: {len(self._offline_buffers[k])} samples", "white"))
+                s += f"{k}: {len(self._offline_buffers[k])} samples\n"
         else:
-            print(colored("No offline buffer", "red"))
-        print(colored("Online buffers:", "green"))
+            s += "\nNo offline buffer"
+        s += "\nOnline buffers:"
         for k in self._online_buffers.keys():
-            print(colored(f"{k}: {len(self._online_buffers[k])} samples"), "white")
+            s += f"{k}: {len(self._online_buffers[k])} samples\n"
+        return s
 
 
 if __name__ == '__main__':
