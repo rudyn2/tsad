@@ -227,12 +227,10 @@ class SACAgent(Agent):
             utils.soft_update_params(self.critic, self.critic_target,
                                      self.critic_tau)
 
-    def save(self, dirname: str, tag: str):
+    def save(self, dirname: str, tag: str = 'best'):
 
         actor_filename = os.path.join(dirname, f"{tag}_actor.pth")
         critic_filename = os.path.join(dirname, f"{tag}_critic.pth")
-        print(f"Saving actor at: {actor_filename}")
-        print(f"Saving critic at: {critic_filename}")
         torch.save(self.actor.state_dict(), actor_filename)
         torch.save(self.critic_target.state_dict(), critic_filename)
         wandb.save(actor_filename)

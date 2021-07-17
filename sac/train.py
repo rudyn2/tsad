@@ -165,15 +165,13 @@ if __name__ == '__main__':
                      action_dim=control_action_dim,
                      batch_size=args.batch_size,
                      offline_proportion=args.bc_proportion,
-                     actor_update_frequency=4,
-                     critic_target_update_frequency=4,
                      actor_weight_decay=args.actor_l2,
                      critic_weight_decay=args.critic_l2)
     print(colored("[*] SAC Agent is ready!", "green"))
     # endregion
 
     # region: init buffer
-    print(colored("[*] Initializing Mixed Replay Buffer", "white"))
+    print(colored(f"[*] Initializing Mixed Replay Buffer with a size of {args.online_memory_size}", "white"))
     if offline_dataset_path:
         print(colored("BC + RL mode"))
         mixed_replay_buffer = MixedReplayBuffer(args.online_memory_size,

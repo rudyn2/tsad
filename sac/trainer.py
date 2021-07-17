@@ -78,8 +78,9 @@ class SACTrainer(object):
         average_episode_reward /= self.num_eval_episodes
 
         if average_episode_reward > self.best_average_episode_reward:
+            print(f"Saving Actor-Critic at {self.work_dir} (step={self.step})")
             self.best_average_episode_reward = average_episode_reward
-            self.agent.save(self.work_dir, f"{self.step}")
+            self.agent.save(self.work_dir)
 
         wandb.log({'eval/episode_reward': average_episode_reward})
 
