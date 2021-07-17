@@ -6,6 +6,7 @@ from tqdm import tqdm
 from sac.utils import calc_reward
 from typing import Tuple, Dict
 from collections import defaultdict
+from termcolor import colored
 
 
 class ReplayMemoryFast:
@@ -199,6 +200,17 @@ class MixedReplayBuffer(object):
         Add a transition to the online buffer.
         """
         self._online_buffers[int(obs['hlc'])].add(obs, action, reward, next_obs, done)
+
+    def log_status(self):
+        if self._offline_buffers is not None:
+            print(colored("Offline buffers:", "green"))
+            for k in self._offline_buffers.keys():
+                print(colored(f"{k}: {len(self._offline_buffers[k])} samples", "white"))
+        else:
+            print(colored("No offline buffer", "red"))
+        print(colored("Online buffers:", "green"))
+        for k in self._online_buffers.keys():
+            print(colored(f"{k}: {len(self._offline_buffers[k])} samples"), "white")
 
 
 if __name__ == '__main__':

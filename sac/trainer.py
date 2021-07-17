@@ -142,6 +142,9 @@ class SACTrainer(object):
                             f"rew={reward:.2f}, acc={action[0]:.3f}, brake={action[1]:.3f} "
                             f"steer={action[2]:.3f}, done={done}")
 
+            if self.step % 2000:
+                self.replay_buffer.log_status()
+
             sys.stdout.write("\r")
             sys.stdout.write(f"Training step: {self.step}/{self.num_train_steps}")
 

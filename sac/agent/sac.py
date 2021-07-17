@@ -215,7 +215,7 @@ class SACAgent(Agent):
         obs, act, reward, next_obs, not_done = online_samples
         offline_obs, offline_act, _, _, _ = offline_samples
 
-        rewards = [np.mean(reward[hlc]) for hlc in range(4)]
+        rewards = [np.mean(reward[hlc]) for hlc in reward.keys()]
         wandb.log({'train/batch_reward': np.array(rewards).mean()})
 
         self.update_critic(obs, act, reward, next_obs, not_done)
