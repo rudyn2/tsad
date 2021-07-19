@@ -25,8 +25,8 @@ class SACAgent(Agent):
                  init_temperature: float = 0.1,
                  critic_tau: float = 0.005,
                  actor_lr: float = 1e-4,
-                 critic_lr: float = 1e-4,
-                 alpha_lr: float = 1e-4,
+                 critic_lr: float = 1e-3,
+                 alpha_lr: float = 1e-4,    # REVISAR
                  actor_betas: tuple = (0.9, 0.999),
                  actor_weight_decay: float = 4e-2,
                  critic_betas: tuple = (0.9, 0.999),
@@ -35,9 +35,9 @@ class SACAgent(Agent):
                  actor_update_frequency: int = 1,
                  critic_target_update_frequency: int = 2,
                  batch_size: int = 1024,
-                 bc_loss_weight: float = 0.3,
-                 actor_loss_weight: float = 0.3,
-                 critic_loss_weight: float = 0.3,
+                 bc_loss_weight: float = 0.5,
+                 actor_loss_weight: float = 0.5,
+                 critic_loss_weight: float = 1,
                  offline_proportion: float = 0.25,
                  learnable_temperature: bool = True):
         super().__init__()
@@ -165,8 +165,7 @@ class SACAgent(Agent):
                 dist_e = self.actor(obs_e[hlc], hlc=hlc)
                 act_e_hlc = self.act_parser_invert(self._to_tensor(act_e[hlc]))
                 log_prob_e = dist_e.log_prob(torch.clamp(act_e_hlc, min=-1 + 1e-6, max=1.0 - 1e-6)).sum(-1, keepdim=True)
-                bc_loss_hlc = - (self.bc_loss_weight * log_prob_e).mean()
-                wandb.log({f'train_actor/bc_loss_{hlc}': bc_loss.item()})
+                bc_loss_hlc = - log_prob_e.mean()
                 bc_loss += bc_loss_hlc * (1 / len(obs.keys()))
 
             wandb.log({'train_actor/bc_loss': bc_loss.item()})
@@ -181,11 +180,8 @@ class SACAgent(Agent):
             actor_Q1, actor_Q2 = self.critic(obs[hlc], self.act_parser(action), hlc=hlc)
             actor_Q = torch.min(actor_Q1, actor_Q2)
 
-            sac_loss_hlc = self.actor_loss_weight * (self.alpha.detach() * log_prob - actor_Q).mean()
+            sac_loss_hlc = (self.alpha.detach() * log_prob - actor_Q).mean()
             log_prob_hlc = log_prob.mean()
-
-            wandb.log({f'train_actor/sac_loss_{hlc}': sac_loss.item()})
-            wandb.log({f'train_actor/entropy_{hlc}': -log_prob_hlc.item()})
 
             total_log_prob += log_prob_hlc * (1 / len(obs.keys()))
             sac_loss += sac_loss_hlc * (1 / len(obs.keys()))
@@ -194,11 +190,15 @@ class SACAgent(Agent):
         wandb.log({'train_actor/target_entropy': self.target_entropy})
         wandb.log({'train_actor/entropy': -total_log_prob.mean().item()})
 
+        # aggregate weighted losses
+        if bc_loss:
+            sac_loss_ = self.actor_loss_weight * sac_loss + self.bc_loss_weight * bc_loss
+        else:
+            sac_loss_ = sac_loss
+
         # optimize the actor
         self.actor_optimizer.zero_grad(set_to_none=True)
-        sac_loss.backward()
-        if bc_loss is not None:
-            bc_loss.backward()
+        sac_loss_.backward()
         self.actor_optimizer.step()
 
         if self.learnable_temperature:

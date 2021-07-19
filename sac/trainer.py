@@ -121,6 +121,8 @@ class SACTrainer(object):
 
             # AGENT ACTION DIM PROXY: 2 -> 3
             action = action_proxy(action)
+            wandb.log({f"instant/action/{name}": value for name, value in zip(["throttle", "acceleration", "brake"],
+                                                                              action)})
 
             # run training update
             if self.step >= self.num_seed_steps:
@@ -129,6 +131,7 @@ class SACTrainer(object):
             next_obs, reward, done, _ = self.env.step(action)
             not_done = 1 - float(done)
             episode_reward += reward
+            wandb.log({"instant/reward": reward})
 
             self.replay_buffer.add(obs, action, reward, next_obs, not_done)
 

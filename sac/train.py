@@ -40,9 +40,9 @@ if __name__ == '__main__':
     rl_group.add_argument('--num-eval-episodes', default=3, type=int, help='Number of evaluation episodes.')
     rl_group.add_argument('--num-train-steps', default=1e6, type=int, help='Number of training steps.')
     rl_group.add_argument('--eval-frequency', default=10, type=int, help='number of episodes between evaluations.')
-    rl_group.add_argument('--speed-reward-weight', default=0.3, type=float, help='Speed reward weight.')
-    rl_group.add_argument('--collision-reward-weight', default=0.3, type=float, help='Collision reward weight')
-    rl_group.add_argument('--lane-distance-reward-weight', default=0.3, type=float, help='Lane distance reward weight')
+    rl_group.add_argument('--speed-reward-weight', default=1, type=float, help='Speed reward weight.')
+    rl_group.add_argument('--collision-reward-weight', default=1, type=float, help='Collision reward weight')
+    rl_group.add_argument('--lane-distance-reward-weight', default=1, type=float, help='Lane distance reward weight')
 
     models_parameters = parser.add_argument_group('Actor-Critic config')
     models_parameters.add_argument('--actor-hidden-dim', type=int, default=512, help='Size of hidden layer in the '
@@ -53,8 +53,6 @@ if __name__ == '__main__':
     loss_parameters = parser.add_argument_group('Loss parameters')
     loss_parameters.add_argument('--bc-factor', type=float, default=0.3,
                                  help='Behavioral cloning loss component weight.')
-    loss_parameters.add_argument('--critic-factor', type=float, default=0.3,
-                                 help='MSBE weight factors used for the critic loss.')
     loss_parameters.add_argument('--actor-factor', type=float, default=0.3,
                                  help='Actor SAC loss component weight.')
     loss_parameters.add_argument('--actor-l2', type=float, default=4e-2,
