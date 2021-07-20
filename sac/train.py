@@ -40,6 +40,7 @@ if __name__ == '__main__':
     rl_group.add_argument('--num-eval-episodes', default=3, type=int, help='Number of evaluation episodes.')
     rl_group.add_argument('--num-train-steps', default=1e6, type=int, help='Number of training steps.')
     rl_group.add_argument('--eval-frequency', default=10, type=int, help='number of episodes between evaluations.')
+    rl_group.add_argument('--learn-temperature', action='store_true', help='Whether to lean alpha value or not.')
     rl_group.add_argument('--speed-reward-weight', default=1, type=float, help='Speed reward weight.')
     rl_group.add_argument('--collision-reward-weight', default=1, type=float, help='Collision reward weight')
     rl_group.add_argument('--lane-distance-reward-weight', default=1, type=float, help='Lane distance reward weight')
