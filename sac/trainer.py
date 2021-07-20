@@ -121,7 +121,7 @@ class SACTrainer(object):
 
             # AGENT ACTION DIM PROXY: 2 -> 3
             action = action_proxy(action)
-            wandb.log({f"instant/action/{name}": value for name, value in zip(["throttle", "acceleration", "brake"],
+            wandb.log({f"instant/action/{name}": value for name, value in zip(["throttle", "brake", "steer"],
                                                                               action)})
 
             # run training update
