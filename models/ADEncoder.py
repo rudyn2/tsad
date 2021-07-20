@@ -313,7 +313,6 @@ class TimmBackbone(nn.Module):
         return x
 
 
-
 class ADEncoder(nn.Module):
     """
     Autonomous Driving Encoder

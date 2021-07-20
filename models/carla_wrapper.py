@@ -3,8 +3,9 @@ import torch.nn
 from gym_carla.envs.carla_env import CarlaEnv
 from typing import Dict, Tuple
 from torch import Tensor
-from collections import deque
+from scripts.visualize import labels_to_cityscapes_palette
 from gym.core import Wrapper
+import torchvision.transforms as T
 import cv2
 
 
@@ -28,6 +29,7 @@ class EncodeWrapper(Wrapper):
 
         self._visual_encoder.to(self._device)
         self._temporal_encoder.to(self._device)
+        self._to_tensor = T.ToTensor()
 
         self.step_ = 0
         self._visual_buffer = None
@@ -39,9 +41,9 @@ class EncodeWrapper(Wrapper):
         """
         Takes an observation of an rgb image and a depth map and returns a stacked torch tensor
         """
-        rgb = torch.tensor(observation['camera'])[64:, :, :]
-        depth = torch.tensor(observation['depth'])[64:, :]
-        x = torch.cat([rgb.permute(2, 0, 1), depth.unsqueeze(0)])
+        rgb = self._to_tensor(observation['camera'])
+        depth = torch.tensor(observation['depth']) / 1000
+        x = torch.cat([depth.unsqueeze(0), rgb])
         x = x.unsqueeze(0).to(self._device).float()
         return x
 
@@ -116,6 +118,12 @@ class EncodeWrapper(Wrapper):
         obs = self._format_observation(observation)
         encoded_obs = self._visual_encoder.encode(obs)
         encoded_obs = encoded_obs.detach()
+        if self._debug:
+            output_predicted = self._visual_encoder.decode(encoded_obs)
+            pred_segmentation = output_predicted['segmentation'].argmax(dim=1)
+            pred_segmentation = pred_segmentation.squeeze(0).detach().cpu().numpy()
+            cv2.imshow('predicted segmentation', labels_to_cityscapes_palette(pred_segmentation))
+            cv2.waitKey(10)
         return encoded_obs
 
 
@@ -124,21 +132,21 @@ if __name__ == '__main__':
     from TemporalEncoder import SequenceRNNEncoder
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    vis_weights = r'C:\Users\C0101\Documents\tsad\dataset\weights\best_model_1_validation_accuracy=-0.5557.pt'
-    temp_weights = r'C:\Users\C0101\Documents\tsad\dataset\weights\best_VanillaRNNEncoder(2).pth'
+    vis_weights = r'C:\Users\C0101\Documents\tsad\dataset\weights\mobilenet_final_weights.pt'
+    temp_weights = r'C:\Users\C0101\Documents\tsad\dataset\weights\best_SequenceRNNEncoder.pth'
 
-    visual = ADEncoder(backbone='efficientnet-b0')
-    # visual.load_state_dict(torch.load(vis_weights))
+    visual = ADEncoder(backbone='mobilenetv3_small_075')
+    visual.load_state_dict(torch.load(vis_weights))
     visual.to(device)
     visual.eval()
     visual.freeze()
 
-    temp = SequenceRNNEncoder(num_layers=4,
+    temp = SequenceRNNEncoder(num_layers=2,
                               hidden_size=1024,
-                              action__chn=256,
-                              speed_chn=256,
+                              action__chn=1024,
+                              speed_chn=1024,
                               bidirectional=True)
-    # temp.load_state_dict(torch.load(temp_weights))
+    temp.load_state_dict(torch.load(temp_weights))
     temp.to(device)
     temp.eval()
     temp.freeze()
