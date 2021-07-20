@@ -165,7 +165,8 @@ if __name__ == '__main__':
                      batch_size=args.batch_size,
                      offline_proportion=args.bc_proportion,
                      actor_weight_decay=args.actor_l2,
-                     critic_weight_decay=args.critic_l2)
+                     critic_weight_decay=args.critic_l2,
+                     learnable_temperature=args.learn_temperature)
     print(colored("[*] SAC Agent is ready!", "green"))
     # endregion
 
