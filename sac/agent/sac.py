@@ -37,7 +37,6 @@ class SACAgent(Agent):
                  batch_size: int = 1024,
                  bc_loss_weight: float = 0.5,
                  actor_loss_weight: float = 0.5,
-                 critic_loss_weight: float = 1,
                  offline_proportion: float = 0.25,
                  learnable_temperature: bool = True):
         super().__init__()
@@ -83,12 +82,15 @@ class SACAgent(Agent):
         self.log_alpha_optimizer = torch.optim.Adam([self.log_alpha],
                                                     lr=alpha_lr,
                                                     betas=alpha_betas)
-        self.critic_loss_weight = critic_loss_weight
         self.actor_loss_weight = actor_loss_weight
         self.bc_loss_weight = bc_loss_weight
 
         self.train()
         self.critic_target.train()
+
+        # Freeze target networks with respect to optimizers (only update via polyak averaging)
+        for p in self.critic_target.parameters():
+            p.requires_grad = False
 
     def train(self, training=True):
         self.training = training
@@ -113,7 +115,6 @@ class SACAgent(Agent):
 
         # clamp the actions
         output = torch.max(torch.min(output, torch.tensor([[1, 1., 1]])), torch.tensor([[0, 0, -1.]]))
-
         output = output.to(self.device)
         return output.float()
 
@@ -141,10 +142,7 @@ class SACAgent(Agent):
             target_Q = self._to_tensor(reward[hlc]) + (self._to_tensor(not_done[hlc]) * self.discount * target_V).float()
             target_Q = target_Q.detach()
             current_Q1, current_Q2 = self.critic(obs[hlc], self._to_tensor(act[hlc]).float(), hlc=hlc)
-
-            critic_loss_hlc = self.critic_loss_weight * (F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q))
-
-            wandb.log({f'train_critic/loss_{hlc}': critic_loss_hlc.item()})
+            critic_loss_hlc = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
             critic_loss += critic_loss_hlc * (1 / len(obs.keys()))
 
         wandb.log({'train_critic/loss': critic_loss})
