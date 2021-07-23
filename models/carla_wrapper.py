@@ -87,6 +87,10 @@ class EncodeWrapper(Wrapper):
             "hlc": observation['hlc'] - 1
         }
 
+        # OVERRIDE DONE SIGNAL IN CASE OF HLC != LANE_FOLLOW
+        if obs["hlc"] != 3:
+            done = True
+
         return obs, reward, done, info
 
     def step(self, action: list):

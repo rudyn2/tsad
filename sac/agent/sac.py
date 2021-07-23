@@ -131,19 +131,17 @@ class SACAgent(Agent):
 
     def update_critic(self, obs, act, reward, next_obs, not_done):
 
-        critic_loss = torch.tensor(.0, device=self.device).float()
-        for hlc in obs.keys():
-            dist = self.actor(next_obs[hlc], hlc=hlc)
-            next_action = dist.rsample()
-            log_prob = dist.log_prob(next_action).sum(-1, keepdim=False)
-            next_action = self.act_parser(next_action)
-            target_Q1, target_Q2 = self.critic_target(next_obs[hlc], next_action, hlc=hlc)
-            target_V = torch.min(target_Q1, target_Q2) - self.alpha.detach() * log_prob
-            target_Q = self._to_tensor(reward[hlc]) + (self._to_tensor(not_done[hlc]) * self.discount * target_V).float()
-            target_Q = target_Q.detach()
-            current_Q1, current_Q2 = self.critic(obs[hlc], self._to_tensor(act[hlc]).float(), hlc=hlc)
-            critic_loss_hlc = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
-            critic_loss += critic_loss_hlc * (1 / len(obs.keys()))
+        hlc = 3
+        dist = self.actor(next_obs[hlc], hlc=hlc)
+        next_action = dist.rsample()
+        log_prob = dist.log_prob(next_action).sum(-1, keepdim=False)
+        next_action = self.act_parser(next_action)
+        target_Q1, target_Q2 = self.critic_target(next_obs[hlc], next_action, hlc=hlc)
+        target_V = torch.min(target_Q1, target_Q2) - self.alpha.detach() * log_prob
+        target_Q = self._to_tensor(reward[hlc]) + (self._to_tensor(not_done[hlc]) * self.discount * target_V).float()
+        target_Q = target_Q.detach()
+        current_Q1, current_Q2 = self.critic(obs[hlc], self._to_tensor(act[hlc]).float(), hlc=hlc)
+        critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
 
         wandb.log({'train_critic/loss': critic_loss})
 
@@ -153,40 +151,33 @@ class SACAgent(Agent):
         self.critic_optimizer.step()
 
     def update_actor_and_alpha(self, obs, obs_e, act_e):
+        # HARDCODED: ONLY LANE FOLLOW TASK
+        hlc = 3
 
         # with torch.cuda.amp.autocast(): -> mixed precision training
         # behavioral cloning component
         bc_loss = None
         if obs_e and act_e:
-            bc_loss = torch.tensor(.0, device=self.device)
-            for hlc in obs.keys():
-                dist_e = self.actor(obs_e[hlc], hlc=hlc)
-                act_e_hlc = self.act_parser_invert(self._to_tensor(act_e[hlc]))
-                log_prob_e = dist_e.log_prob(torch.clamp(act_e_hlc, min=-1 + 1e-6, max=1.0 - 1e-6)).sum(-1, keepdim=True)
-                bc_loss_hlc = - log_prob_e.mean()
-                bc_loss += bc_loss_hlc * (1 / len(obs.keys()))
 
+            dist_e = self.actor(obs_e[hlc], hlc=hlc)
+            act_e_hlc = self.act_parser_invert(self._to_tensor(act_e[hlc]))
+            log_prob_e = dist_e.log_prob(torch.clamp(act_e_hlc, min=-1 + 1e-6, max=1.0 - 1e-6)).sum(-1, keepdim=True)
+            bc_loss = - log_prob_e.mean()
             wandb.log({'train_actor/bc_loss': bc_loss.item()})
 
         # on-policy actor loss
-        sac_loss = torch.tensor(.0, device=self.device)
-        total_log_prob = torch.tensor(.0, device=self.device)
-        for hlc in obs.keys():
-            dist = self.actor(obs[hlc], hlc=hlc)
-            action = dist.rsample()
-            log_prob = dist.log_prob(action).sum(-1, keepdim=True)
-            actor_Q1, actor_Q2 = self.critic(obs[hlc], self.act_parser(action), hlc=hlc)
-            actor_Q = torch.min(actor_Q1, actor_Q2)
+        dist = self.actor(obs[hlc], hlc=hlc)
+        action = dist.rsample()
+        log_prob = dist.log_prob(action).sum(-1, keepdim=True)
+        actor_Q1, actor_Q2 = self.critic(obs[hlc], self.act_parser(action), hlc=hlc)
+        actor_Q = torch.min(actor_Q1, actor_Q2)
 
-            sac_loss_hlc = (self.alpha.detach() * log_prob - actor_Q).mean()
-            log_prob_hlc = log_prob.mean()
-
-            total_log_prob += log_prob_hlc * (1 / len(obs.keys()))
-            sac_loss += sac_loss_hlc * (1 / len(obs.keys()))
+        sac_loss = (self.alpha.detach() * log_prob - actor_Q).mean()
+        log_prob = log_prob.mean()
 
         wandb.log({'train_actor/sac_loss': sac_loss.item()})
         wandb.log({'train_actor/target_entropy': self.target_entropy})
-        wandb.log({'train_actor/entropy': -total_log_prob.mean().item()})
+        wandb.log({'train_actor/entropy': -log_prob.mean().item()})
 
         # aggregate weighted losses
         if bc_loss:
@@ -201,20 +192,21 @@ class SACAgent(Agent):
 
         if self.learnable_temperature:
             self.log_alpha_optimizer.zero_grad(set_to_none=True)
-            alpha_loss = (self.alpha * (-total_log_prob - self.target_entropy).detach()).mean()
+            alpha_loss = (- self.alpha * (log_prob + self.target_entropy).detach()).mean()
             wandb.log({'train_alpha/loss': alpha_loss})
             wandb.log({'train_alpha/value': self.alpha})
             alpha_loss.backward()
             self.log_alpha_optimizer.step()
 
     def update(self, replay_buffer, step):
+        hlc = 3
         online_samples, offline_samples = replay_buffer.sample(self.batch_size, self.offline_proportion)
 
         obs, act, reward, next_obs, not_done = online_samples
         offline_obs, offline_act, _, _, _ = offline_samples
 
-        rewards = [np.mean(reward[hlc]) for hlc in reward.keys()]
-        wandb.log({'train/batch_reward': np.array(rewards).mean()})
+        rewards = np.mean(reward[hlc])
+        wandb.log({'train/batch_reward': rewards})
 
         self.update_critic(obs, act, reward, next_obs, not_done)
 

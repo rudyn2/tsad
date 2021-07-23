@@ -169,29 +169,28 @@ class MixedReplayBuffer(object):
             )
         """
         assert 0 <= offline <= 1, f"Offline relative size should be between 0 and 1, got: {offline}"
-        sub_batch_size = batch_size // 4
-        online_batch_size = (int(sub_batch_size * (1 - offline)))
-        offline_batch_size = (sub_batch_size - online_batch_size)
+        online_batch_size = (int(batch_size * (1 - offline)))
+        offline_batch_size = (batch_size - online_batch_size)
 
         # (obs, act, rew, next_obs, not_done)
         all_online_samples, all_offline_samples = [defaultdict(list) for _ in range(5)], \
                                                   [defaultdict(list) for _ in range(5)]
-        for hlc in range(4):
-            offline_samples = []
-            if self._offline_buffers:
-                offline_samples = self._offline_buffers[hlc].sample(offline_batch_size)
-            if len(offline_samples) == 0:  # then either the buffer doesn't exists or doesn't have enough samples
-                # so, we try to pull all of them from the online buffer
-                online_samples = self._online_buffers[hlc].sample(sub_batch_size)
-            else:  # if we have samples from the offline buffer, then we just get the missing ones
-                online_samples = self._online_buffers[hlc].sample(online_batch_size)
-                if len(online_samples) == 0:  # then we don't have enough samples in the online buffer
-                    online_samples = self._offline_buffers[hlc].sample(online_batch_size)
-            # save each sub-batch
-            for i, data in enumerate(offline_samples):
-                all_offline_samples[i][hlc].extend(data)
-            for i, data in enumerate(online_samples):
-                all_online_samples[i][hlc].extend(data)
+        offline_samples = []
+        if self._offline_buffers:
+            offline_samples = self._offline_buffers[3].sample(offline_batch_size)
+        if len(offline_samples) == 0:  # then either the buffer doesn't exists or doesn't have enough samples
+            # so, we try to pull all of them from the online buffer
+            online_samples = self._online_buffers[3].sample(batch_size)
+        else:  # if we have samples from the offline buffer, then we just get the missing ones
+            online_samples = self._online_buffers[3].sample(online_batch_size)
+            if len(online_samples) == 0:  # then we don't have enough samples in the online buffer
+                online_samples = self._offline_buffers[3].sample(online_batch_size)
+
+        # save each sub-batch
+        for i, data in enumerate(offline_samples):
+            all_offline_samples[i][3].extend(data)
+        for i, data in enumerate(online_samples):
+            all_online_samples[i][3].extend(data)
 
         return all_online_samples, all_offline_samples
 

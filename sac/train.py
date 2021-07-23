@@ -152,7 +152,7 @@ if __name__ == '__main__':
     print(colored("[*] Initializing actor critic models", "white"))
     actor = DiagGaussianActor(action_dim=control_action_dim,
                               hidden_dim=args.actor_hidden_dim,
-                              log_std_bounds=(-3, 3)
+                              log_std_bounds=(-2, 5)
                               )
     critic = DoubleQCritic(action_dim=input_action_dim,
                            hidden_dim=args.critic_hidden_dim)
@@ -198,8 +198,7 @@ if __name__ == '__main__':
     trainer = SACTrainer(env=carla_processed_env,
                          agent=agent,
                          buffer=mixed_replay_buffer,
-                         **train_params
-                         )
+                         **train_params)
     try:
         trainer.run()
     except Exception as e:
