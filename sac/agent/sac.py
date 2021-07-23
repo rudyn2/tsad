@@ -22,10 +22,10 @@ class SACAgent(Agent):
                  action_range: tuple = (-1, 1),
                  device: str = 'cuda',
                  discount: float = 0.99,
-                 init_temperature: float = 0.1,
+                 init_temperature: float = 0.3,
                  critic_tau: float = 0.005,
                  actor_lr: float = 1e-4,
-                 critic_lr: float = 1e-3,
+                 critic_lr: float = 1e-4,
                  alpha_lr: float = 1e-4,    # REVISAR
                  actor_betas: tuple = (0.9, 0.999),
                  actor_weight_decay: float = 4e-2,
