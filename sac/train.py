@@ -41,6 +41,7 @@ if __name__ == '__main__':
     rl_group.add_argument('--num-train-steps', default=1e6, type=int, help='Number of training steps.')
     rl_group.add_argument('--eval-frequency', default=10, type=int, help='number of episodes between evaluations.')
     rl_group.add_argument('--learn-temperature', action='store_true', help='Whether to lean alpha value or not.')
+    rl_group.add_argument('--reward-scale', default=1, type=float, help='Reward scale factor (positive)')
     rl_group.add_argument('--speed-reward-weight', default=1, type=float, help='Speed reward weight.')
     rl_group.add_argument('--collision-reward-weight', default=1, type=float, help='Collision reward weight')
     rl_group.add_argument('--lane-distance-reward-weight', default=1, type=float, help='Lane distance reward weight')
@@ -143,9 +144,11 @@ if __name__ == '__main__':
     }
     carla_raw_env = CarlaEnv(env_params)
     carla_processed_env = EncodeWrapper(carla_raw_env, visual, temp, max_steps=args.max_episode_steps,
+                                        reward_scale=args.reward_scale,
                                         action_frequency=args.control_frequency, debug=args.debug)
     carla_processed_env.reset()
-    print(colored("[+] Environment ready!", "green"))
+    print(colored(f"[+] Environment ready (max_steps={args.max_episode_steps}, reward_scale={args.reward_scale},"
+                  f"action_frequency={args.control_frequency})!", "green"))
     # endregion
 
     # region: init agent

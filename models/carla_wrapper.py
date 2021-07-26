@@ -17,12 +17,14 @@ class EncodeWrapper(Wrapper):
                  temporal_encoder: torch.nn.Module,
                  max_steps: int = 200,
                  action_frequency: int = 4,
+                 reward_scale: float = 1,
                  device: str = 'cuda',
                  debug: bool = True):
         self._action_frequency = action_frequency
         env.max_steps = max_steps * action_frequency
         super(EncodeWrapper, self).__init__(env)
 
+        self._reward_scale = reward_scale
         self._device = device
         self._visual_encoder = visual_encoder
         self._temporal_encoder = temporal_encoder
@@ -69,6 +71,7 @@ class EncodeWrapper(Wrapper):
         """
         # do an step
         observation, reward, done, info = self.env.step(action)
+        reward = self._reward_scale * reward
 
         # create actual encoding using provided action
         hidden_state, temporal_encoding = self.create_temporal_encoding(action)  # (1, 512, 4, 4)
