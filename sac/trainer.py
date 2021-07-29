@@ -42,6 +42,7 @@ class SACTrainer(object):
                  env: EncodeWrapper,
                  agent: SACAgent,
                  buffer: MixedReplayBuffer,
+                 log_eval=False,
                  **kwargs):
         self.work_dir = os.getcwd()
         print(f'workspace: {self.work_dir}')
@@ -61,6 +62,8 @@ class SACTrainer(object):
         self.best_average_episode_reward = -1e6
         self.step = 0
 
+        self.log_eval = log_eval
+
     def evaluate(self):
         average_episode_reward = 0
         for episode in range(self.num_eval_episodes):
@@ -72,8 +75,14 @@ class SACTrainer(object):
                 with utils.eval_mode(self.agent):
                     action = self.agent.act(obs, sample=False)
                 obs, reward, done, _ = self.env.step(action_proxy(action))
+                if self.log_eval:
+                    wandb.log({f"instant/action/{name}": value for name, value in zip(["throttle", "brake", "steer"],
+                                                                              action_proxy(action))})
+                    wandb.log({"instant/reward": reward})
                 episode_reward += reward
 
+            if self.log_eval:
+                wandb.log({'eval/episode': episode, 'eval/episode_reward': episode_reward})
             average_episode_reward += episode_reward
         average_episode_reward /= self.num_eval_episodes
 
