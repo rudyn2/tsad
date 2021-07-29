@@ -26,7 +26,7 @@ class SACAgent(Agent):
                  critic_tau: float = 0.005,
                  actor_lr: float = 1e-4,
                  critic_lr: float = 1e-4,
-                 alpha_lr: float = 1e-4,    # REVISAR
+                 alpha_lr: float = 1e-4,
                  actor_betas: tuple = (0.9, 0.999),
                  actor_weight_decay: float = 4e-2,
                  critic_betas: tuple = (0.9, 0.999),
@@ -35,8 +35,7 @@ class SACAgent(Agent):
                  actor_update_frequency: int = 1,
                  critic_target_update_frequency: int = 2,
                  batch_size: int = 1024,
-                 bc_loss_weight: float = 0.5,
-                 actor_loss_weight: float = 0.5,
+                 actor_bc_update_frequency: int = 4,
                  offline_proportion: float = 0.25,
                  learnable_temperature: bool = True):
         super().__init__()
@@ -47,6 +46,7 @@ class SACAgent(Agent):
         self.critic_tau = critic_tau
         self.actor_update_frequency = actor_update_frequency
         self.critic_target_update_frequency = critic_target_update_frequency
+        self.actor_bc_update_frequency = actor_bc_update_frequency
         self.batch_size = batch_size
         self.learnable_temperature = learnable_temperature
         self.offline_proportion = offline_proportion
@@ -82,8 +82,6 @@ class SACAgent(Agent):
         self.log_alpha_optimizer = torch.optim.Adam([self.log_alpha],
                                                     lr=alpha_lr,
                                                     betas=alpha_betas)
-        self.actor_loss_weight = actor_loss_weight
-        self.bc_loss_weight = bc_loss_weight
 
         self.train()
         self.critic_target.train()
@@ -150,21 +148,11 @@ class SACAgent(Agent):
         critic_loss.backward()
         self.critic_optimizer.step()
 
-    def update_actor_and_alpha(self, obs, obs_e, act_e):
+    def update_actor_and_alpha(self, obs):
         # HARDCODED: ONLY LANE FOLLOW TASK
         hlc = 3
 
         # with torch.cuda.amp.autocast(): -> mixed precision training
-        # behavioral cloning component
-        bc_loss = None
-        if obs_e and act_e:
-
-            dist_e = self.actor(obs_e[hlc], hlc=hlc)
-            act_e_hlc = self.act_parser_invert(self._to_tensor(act_e[hlc]))
-            log_prob_e = dist_e.log_prob(torch.clamp(act_e_hlc, min=-1 + 1e-6, max=1.0 - 1e-6)).sum(-1, keepdim=True)
-            bc_loss = - log_prob_e.mean()
-            wandb.log({'train_actor/bc_loss': bc_loss.item()})
-
         # on-policy actor loss
         dist = self.actor(obs[hlc], hlc=hlc)
         action = dist.rsample()
@@ -179,15 +167,9 @@ class SACAgent(Agent):
         wandb.log({'train_actor/target_entropy': self.target_entropy})
         wandb.log({'train_actor/entropy': -log_prob.mean().item()})
 
-        # aggregate weighted losses
-        if bc_loss:
-            sac_loss_ = self.actor_loss_weight * sac_loss + self.bc_loss_weight * bc_loss
-        else:
-            sac_loss_ = sac_loss
-
         # optimize the actor
         self.actor_optimizer.zero_grad(set_to_none=True)
-        sac_loss_.backward()
+        sac_loss.backward()
         self.actor_optimizer.step()
 
         if self.learnable_temperature:
@@ -197,6 +179,18 @@ class SACAgent(Agent):
             wandb.log({'train_alpha/value': self.alpha})
             alpha_loss.backward()
             self.log_alpha_optimizer.step()
+
+    def update_actor_with_bc(self, obs, act):
+        hlc = 3
+        dist_e = self.actor(obs[hlc], hlc=hlc)
+        act_e_hlc = self.act_parser_invert(self._to_tensor(act[hlc]))
+        log_prob_e = dist_e.log_prob(torch.clamp(act_e_hlc, min=-1 + 1e-6, max=1.0 - 1e-6)).sum(-1, keepdim=True)
+        bc_loss = - log_prob_e.mean()
+        wandb.log({'train_actor/bc_loss': bc_loss.item()})
+
+        self.actor_optimizer.zero_grad(set_to_none=True)
+        bc_loss.backward()
+        self.actor_optimizer.step()
 
     def update(self, replay_buffer, step):
         hlc = 3
@@ -210,8 +204,11 @@ class SACAgent(Agent):
 
         self.update_critic(obs, act, reward, next_obs, not_done)
 
+        if step % self.actor_bc_update_frequency == 0:
+            self.update_actor_with_bc(offline_obs, offline_act)
+
         if step % self.actor_update_frequency == 0:
-            self.update_actor_and_alpha(obs, offline_obs, offline_act)
+            self.update_actor_and_alpha(obs)
 
         if step % self.critic_target_update_frequency == 0:
             utils.soft_update_params(self.critic, self.critic_target,
