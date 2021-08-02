@@ -7,6 +7,7 @@ import sac.utils as utils
 from . import Agent
 from sac.agent.actor import DiagGaussianActor
 from sac.agent.critic import DoubleQCritic
+from sac.eps_scheduler import Epsilon
 import wandb
 import os
 
@@ -85,6 +86,8 @@ class SACAgent(Agent):
 
         self.train()
         self.critic_target.train()
+        self._eps = Epsilon(100000, method="linear", factor=5)
+        self._step = 0
 
         # Freeze target networks with respect to optimizers (only update via polyak averaging)
         for p in self.critic_target.parameters():
@@ -97,7 +100,8 @@ class SACAgent(Agent):
 
     @property
     def alpha(self):
-        return self.log_alpha.exp()
+        return torch.tensor(0.3 * self._eps(self._step), requires_grad=False)
+        # return self.log_alpha.exp()
 
     def act(self, obs, sample=False):
         dist = self.actor(obs, obs['hlc'])
@@ -118,8 +122,8 @@ class SACAgent(Agent):
 
     def act_parser_invert(self, three_dim_action: torch.Tensor) -> torch.Tensor:
         output = torch.zeros(three_dim_action.shape[0], 2)
-        output[:, 0] = three_dim_action[:, 0] - three_dim_action[:, 1]
-        output[:, 1] = three_dim_action[:, 2]
+        output[:, 0] = three_dim_action[:, 0] - three_dim_action[:, 1]      # throttle - brake
+        output[:, 1] = three_dim_action[:, 2]   # steer
         output = torch.clamp(output, min=-1, max=1)
         output = output.to(self.device)
         return output.detach().float()
@@ -193,6 +197,7 @@ class SACAgent(Agent):
         self.actor_optimizer.step()
 
     def update(self, replay_buffer, step):
+        self._step += 1
         hlc = 3
         online_samples, offline_samples = replay_buffer.sample(self.batch_size, self.offline_proportion)
 

@@ -131,7 +131,7 @@ if __name__ == '__main__':
         'max_past_step': 1,  # the number of past steps to draw
         'dt': 1 / 30,  # time interval between two frames
         'reward_weights': reward_weights,  # reward weights [speed, collision, lane distance]
-        'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
+        'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration-throttle range
         'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
         'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
         'max_time_episode': args.max_episode_steps,  # maximum timesteps per episode
