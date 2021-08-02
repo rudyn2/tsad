@@ -138,6 +138,10 @@ class SACTrainer(object):
             if self.step >= self.num_seed_steps:
                 self.agent.update(self.replay_buffer, self.step)
 
+            # save checkpoints
+            if self.step % 50000 == 0:
+                self.agent.save(self.work_dir, tag=f"at_{self.step}")
+
             next_obs, reward, done, _ = self.env.step(action)
             not_done = 1 - float(done)
             episode_reward += reward
