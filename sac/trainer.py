@@ -162,6 +162,8 @@ class SACTrainer(object):
                              f"{self.replay_buffer.log_status() if self.step % 2000 == 0 else ''}")
 
     def end(self):
+        # save last agent
+        self.agent.save(self.work_dir, tag="last")
         self.env.reset()
         cv2.destroyAllWindows()
         self.logger.close()
