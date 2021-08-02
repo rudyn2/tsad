@@ -51,6 +51,9 @@ if __name__ == "__main__":
     parser.add_argument('--force-timm', action='store_true', help='Whether to use timm library or not, only used when backbone is efficientnet.')
     args = parser.parse_args()
 
+    save_imgs = False
+    plot_emb = True
+
     if not os.path.exists(args.img_folder):
         os.makedirs(args.img_folder)
 
@@ -60,7 +63,7 @@ if __name__ == "__main__":
     else:
         dataset = CarlaEmbeddingDataset(embeddings_path=args.embeddings, json_path=args.metadata, sequence=args.use_sequence)
 
-    loader = DataLoader(dataset, batch_size=args.batch_size, collate_fn=PadSequence())
+    loader = DataLoader(dataset, batch_size=args.batch_size, collate_fn=PadSequence(), drop_last=True)
 
     if args.use_sequence:
         temp_model = SequenceRNNEncoder(
@@ -100,6 +103,10 @@ if __name__ == "__main__":
 
     h = temp_model.init_hidden(args.batch_size, device=device)
 
+    sum_h = torch.zeros((4, 1024), device=args.device)
+    sum_emb = torch.zeros((512, 4, 4), device=args.device)
+    q = 0
+
     for i, (embeddings, embeddings_length, actions, speeds, embeddings_label) in enumerate(loader):
         embeddings, embeddings_label, actions, speeds = embeddings.to(args.device), embeddings_label.to(
             args.device), actions.to(
@@ -112,14 +119,71 @@ if __name__ == "__main__":
         output_predicted = vis_model.decode(pred_embedding[:, -1, :, :, :])
         pred_segmentation = output_predicted['segmentation'].argmax(dim=1)
 
-        vmin = pred_segmentation.min()
-        vmax = pred_segmentation.max()
+        sum_h += h[0].sum(dim=1)
+        sum_emb += embeddings[:, -1, :, :, :].sum(dim=0)
+        q += actions.shape[0]
 
-        for j in range(pred_segmentation.shape[0]):
-            pred_seg = pred_segmentation[j].detach().cpu().numpy()
-            seg = segmentation[j].detach().cpu().numpy()
-            save_image(pred_seg, '{}/{}-{}_pred.png'.format(args.img_folder, i, j), vmin=vmin, vmax=vmax)
-            save_image(seg, '{}/{}-{}_real.png'.format(args.img_folder, i, j), vmin=vmin, vmax=vmax)
+        if save_imgs:
+            vmin = pred_segmentation.min()
+            vmax = pred_segmentation.max()
 
-        if i >= args.nb_images // args.batch_size + 1:
-            break
+            for j in range(pred_segmentation.shape[0]):
+                pred_seg = pred_segmentation[j].detach().cpu().numpy()
+                seg = segmentation[j].detach().cpu().numpy()
+                save_image(pred_seg, '{}/{}-{}_pred.png'.format(args.img_folder, i, j), vmin=vmin, vmax=vmax)
+                save_image(seg, '{}/{}-{}_real.png'.format(args.img_folder, i, j), vmin=vmin, vmax=vmax)
+
+        # if i >= args.nb_images // args.batch_size + 1:
+        #     break
+    
+
+
+
+    sigma_h = torch.zeros((4, 1024), device=args.device)
+    sigma_emb = torch.zeros((512, 4, 4), device=args.device)
+    for i, (embeddings, embeddings_length, actions, speeds, embeddings_label) in enumerate(loader):
+        embeddings, embeddings_label, actions, speeds = embeddings.to(args.device), embeddings_label.to(
+            args.device), actions.to(
+            args.device), speeds.to(args.device)
+        pred_embedding, h = temp_model(embeddings, actions, speeds, hidden=h)
+
+        output_expected = vis_model.decode(embeddings_label[:, -1, :, :, :])
+        segmentation = output_expected['segmentation'].argmax(dim=1)
+
+        output_predicted = vis_model.decode(pred_embedding[:, -1, :, :, :])
+        pred_segmentation = output_predicted['segmentation'].argmax(dim=1)
+
+
+        sigma_h += (h[0].sum(dim=1) - sum_h/q)**2/q
+        sigma_emb += (embeddings[:, -1, :, :, :].sum(dim=0) - sum_emb/q)**2/q
+
+        if save_imgs:
+            vmin = pred_segmentation.min()
+            vmax = pred_segmentation.max()
+
+            for j in range(pred_segmentation.shape[0]):
+                pred_seg = pred_segmentation[j].detach().cpu().numpy()
+                seg = segmentation[j].detach().cpu().numpy()
+                save_image(pred_seg, '{}/{}-{}_pred.png'.format(args.img_folder, i, j), vmin=vmin, vmax=vmax)
+                save_image(seg, '{}/{}-{}_real.png'.format(args.img_folder, i, j), vmin=vmin, vmax=vmax)
+
+        # if i >= args.nb_images // args.batch_size + 1:
+        #     break
+
+
+    if plot_emb:
+        import matplotlib.pyplot as plt
+
+        fig, ax = plt.subplots(2, 2)
+        
+        _ = ax[0, 0].hist((sum_h/q).view((-1)).detach().cpu().numpy(), bins='auto')
+        ax[0, 0].set_title('Media h')
+        _ = ax[0, 1].hist((sum_emb/q).view((-1)).cpu().numpy(), bins='auto')
+        ax[0, 1].set_title('Media Embeddings')
+
+        _ = ax[1, 0].hist((sigma_h).view((-1)).detach().cpu().numpy(), bins='auto')
+        ax[1, 0].set_title('Var h')
+        _ = ax[1, 1].hist((sigma_emb).view((-1)).cpu().numpy(), bins='auto')
+        ax[1, 1].set_title('Var Embeddings')
+
+        plt.show()

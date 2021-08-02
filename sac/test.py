@@ -190,6 +190,10 @@ if __name__ == '__main__':
     print(colored("[*] The replay Buffer is ready!", "green"))
     # endregion
 
+    # region: init wandb
+    wandb.init(project='tsad', entity='autonomous-driving')
+    # endregion
+
     train_params = {
         "device": "cuda",
         "seed": 42,
@@ -203,6 +207,7 @@ if __name__ == '__main__':
     trainer = SACTrainer(env=carla_processed_env,
                          agent=agent,
                          buffer=mixed_replay_buffer,
+                         log_eval=True,
                          **train_params
                          )
 
