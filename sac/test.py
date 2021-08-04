@@ -45,9 +45,13 @@ if __name__ == '__main__':
                                                                            'is going to be repeated to the environment')
     rl_group.add_argument('--max-episode-steps', default=200, type=int, help='Maximum number of steps per episode.')
     rl_group.add_argument('--num-eval-episodes', default=3, type=int, help='Number of evaluation episodes.')
-    rl_group.add_argument('--speed-reward-weight', default=0.3, type=float, help='Speed reward weight.')
-    rl_group.add_argument('--collision-reward-weight', default=0.3, type=float, help='Collision reward weight')
-    rl_group.add_argument('--lane-distance-reward-weight', default=0.3, type=float, help='Lane distance reward weight')
+    rl_group.add_argument('--num-train-steps', default=1e6, type=int, help='Number of training steps.')
+    rl_group.add_argument('--eval-frequency', default=10, type=int, help='number of episodes between evaluations.')
+    rl_group.add_argument('--learn-temperature', action='store_true', help='Whether to lean alpha value or not.')
+    rl_group.add_argument('--reward-scale', default=1, type=float, help='Reward scale factor (positive)')
+    rl_group.add_argument('--speed-reward-weight', default=1, type=float, help='Speed reward weight.')
+    rl_group.add_argument('--collision-reward-weight', default=1, type=float, help='Collision reward weight')
+    rl_group.add_argument('--lane-distance-reward-weight', default=1, type=float, help='Lane distance reward weight')
 
     models_parameters = parser.add_argument_group('Actor-Critic config')
     models_parameters.add_argument('--actor-hidden-dim', type=int, default=512, help='Size of hidden layer in the '
@@ -58,8 +62,6 @@ if __name__ == '__main__':
     loss_parameters = parser.add_argument_group('Loss parameters')
     loss_parameters.add_argument('--bc-factor', type=float, default=0.3,
                                  help='Behavioral cloning loss component weight.')
-    loss_parameters.add_argument('--critic-factor', type=float, default=0.3,
-                                 help='MSBE weight factors used for the critic loss.')
     loss_parameters.add_argument('--actor-factor', type=float, default=0.3,
                                  help='Actor SAC loss component weight.')
     loss_parameters.add_argument('--actor-l2', type=float, default=4e-2,
@@ -98,6 +100,10 @@ if __name__ == '__main__':
     offline_dataset_path = args.bc
     # endregion
 
+    # region: init wandb
+    wandb.init(project='tsad', entity='autonomous-driving')
+    # endregion
+
     # region: init env
     print(colored("[*] Initializing models", "white"))
     visual = ADEncoder(backbone='mobilenetv3_small_075')
@@ -132,7 +138,7 @@ if __name__ == '__main__':
         'max_past_step': 1,  # the number of past steps to draw
         'dt': 1 / 30,  # time interval between two frames
         'reward_weights': reward_weights,  # reward weights [speed, collision, lane distance]
-        'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
+        'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration-throttle range
         'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
         'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
         'max_time_episode': args.max_episode_steps,  # maximum timesteps per episode
@@ -145,16 +151,18 @@ if __name__ == '__main__':
     }
     carla_raw_env = CarlaEnv(env_params)
     carla_processed_env = EncodeWrapper(carla_raw_env, visual, temp, max_steps=args.max_episode_steps,
+                                        reward_scale=args.reward_scale,
                                         action_frequency=args.control_frequency, debug=args.debug)
     carla_processed_env.reset()
-    print(colored("[+] Environment ready!", "green"))
+    print(colored(f"[+] Environment ready (max_steps={args.max_episode_steps}, reward_scale={args.reward_scale},"
+                  f"action_frequency={args.control_frequency})!", "green"))
     # endregion
 
     # region: init agent
     print(colored("[*] Initializing actor critic models", "white"))
     actor = DiagGaussianActor(action_dim=control_action_dim,
                               hidden_dim=args.actor_hidden_dim,
-                              log_std_bounds=(-3, 3)
+                              log_std_bounds=(-2, 5)
                               )
     actor.load_state_dict(torch.load(args.actor_weights))
     critic = DoubleQCritic(action_dim=input_action_dim,
@@ -168,15 +176,14 @@ if __name__ == '__main__':
                      action_dim=control_action_dim,
                      batch_size=args.batch_size,
                      offline_proportion=args.bc_proportion,
-                     actor_update_frequency=4,
-                     critic_target_update_frequency=4,
                      actor_weight_decay=args.actor_l2,
-                     critic_weight_decay=args.critic_l2)
+                     critic_weight_decay=args.critic_l2,
+                     learnable_temperature=args.learn_temperature)
     print(colored("[*] SAC Agent is ready!", "green"))
     # endregion
 
     # region: init buffer
-    print(colored("[*] Initializing Mixed Replay Buffer", "white"))
+    print(colored(f"[*] Initializing Mixed Replay Buffer with a size of {args.online_memory_size}", "white"))
     if offline_dataset_path:
         print(colored("BC + RL mode"))
         mixed_replay_buffer = MixedReplayBuffer(args.online_memory_size,
@@ -190,27 +197,21 @@ if __name__ == '__main__':
     print(colored("[*] The replay Buffer is ready!", "green"))
     # endregion
 
-    # region: init wandb
-    wandb.init(project='tsad', entity='autonomous-driving')
-    # endregion
-
     train_params = {
         "device": "cuda",
         "seed": 42,
         "log_save_tb": True,
         "num_eval_episodes": args.num_eval_episodes,  # number of episodes used for evaluation
-        "num_train_steps": 0,  # number of training steps
-        "eval_frequency": 0,  # number of steps required for evaluation
-        "num_seed_steps": 0  # number of steps before starting to update the models
+        "num_train_steps": args.num_train_steps,  # number of training steps
+        "eval_frequency": args.eval_frequency,  # number of steps required for evaluation
+        "num_seed_steps": args.num_seed  # number of steps before starting to update the models
     }
     print(colored("Training", "white"))
     trainer = SACTrainer(env=carla_processed_env,
                          agent=agent,
                          buffer=mixed_replay_buffer,
                          log_eval=True,
-                         **train_params
-                         )
-
+                         **train_params)
     try:
         trainer.evaluate()
     except Exception as e:

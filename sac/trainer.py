@@ -67,7 +67,9 @@ class SACTrainer(object):
 
     def evaluate(self):
         average_episode_reward = 0
+        steps = 0
         for episode in range(self.num_eval_episodes):
+            duration = 0
             obs = self.env.reset()
             self.agent.reset()
             done = False
@@ -80,10 +82,13 @@ class SACTrainer(object):
                     wandb.log({f"instant/action/{name}": value for name, value in zip(["throttle", "brake", "steer"],
                                                                               action_proxy(action))})
                     wandb.log({"instant/reward": reward})
+                    wandb.log({"eval/step": steps})
                 episode_reward += reward
+                steps += 1
+                duration += 1
 
             if self.log_eval:
-                wandb.log({'eval/episode': episode, 'eval/episode_reward': episode_reward})
+                wandb.log({'eval/episode': episode, 'eval/episode_reward': episode_reward, 'eval/duration': duration})
             average_episode_reward += episode_reward
         average_episode_reward /= self.num_eval_episodes
 
