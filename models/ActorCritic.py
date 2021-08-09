@@ -30,31 +30,6 @@ class TwoLayerMLP(nn.Module):
         return x
 
 
-class ConvReduction(nn.Module):
-    """
-    Takes a tensor with shape (B,C,H,W) and returns a tensor with shape (B,C). To achieve this two convolution layers
-    are used.
-    Output: (1028,)
-    Input: (1028x4x4)
-    """
-
-    def __init__(self, in_channels: int):
-        super(ConvReduction, self).__init__()
-        # reduce the dimensional size to its half
-        self.conv = nn.Conv2d(in_channels=in_channels, out_channels=in_channels,
-                              kernel_size=(3, 3), padding=(1, 1), stride=(2, 2), bias=False)
-        self.bn = nn.BatchNorm2d(in_channels)
-        self.avg_pooling = nn.AdaptiveAvgPool2d(1)
-
-    def forward(self, x):
-        x = self.conv(x)
-        x = self.bn(x)
-        x = self.avg_pooling(x)
-        x = torch.flatten(x, start_dim=1)
-        # x.requires_grad = True
-        return x
-
-
 class Actor(nn.Module):
     """
     Output: a (3,)
@@ -64,13 +39,12 @@ class Actor(nn.Module):
     def __init__(self, hidden_size: int, action_dim: int = 2):
         super(Actor, self).__init__()
         self._device = 'cuda'
-        self._input_channels = 768
         self._action_dim = action_dim
         self._hidden_size = hidden_size
-        self.conv_reduction = ConvReduction(self._input_channels)
-        self.speed_mlp = TwoLayerMLP(3, 256, 128)
+        self.input_mlp = TwoLayerMLP(15, 128, 64)
+        self.speed_mlp = TwoLayerMLP(3, 128, 64)
 
-        input_size = 896
+        input_size = 64 + 64
         self.branches = torch.nn.ModuleDict({
             'left': TwoLayerMLP(input_size, hidden_size, self._action_dim * 2),
             'right': TwoLayerMLP(input_size, hidden_size, self._action_dim * 2),
@@ -91,9 +65,9 @@ class Actor(nn.Module):
         else:
             raise ValueError(f"Expected input of type list, tuple or dict but got: {type(obs)}")
 
-        x = self.conv_reduction(encoding)  # B,1024,4,4 -> 1024
+        encoding = self.input_mlp(encoding)
         speed_embedding = self.speed_mlp(speed)  # B,2, -> 128,
-        x_speed = torch.cat([x, speed_embedding], dim=1)  # B,[1024, 128] -> B,1152
+        x_speed = torch.cat([encoding, speed_embedding], dim=1)  # B,[1024, 128] -> B,1152
 
         # forward
         preds = self.branches[__HLCNUMBER_TO_HLC__[hlc]](x_speed)
@@ -110,11 +84,11 @@ class Critic(nn.Module):
         super(Critic, self).__init__()
         self._input_channels = 768
         self._device = 'cuda'
-        self.conv_reduction = ConvReduction(self._input_channels)
-        self.speed_mlp = TwoLayerMLP(3, 256, 128)
-        self.action_mlp = TwoLayerMLP(action_dim, 256, 128)
+        self.input_mlp = TwoLayerMLP(3, 128, 64)
+        self.speed_mlp = TwoLayerMLP(3, 128, 64)
+        self.action_mlp = TwoLayerMLP(action_dim, 128, 64)
 
-        input_size = 1024
+        input_size = 64 + 64 + 64
         self.branches = torch.nn.ModuleDict({
             'left': TwoLayerMLP(input_size, hidden_dim, 1),
             'right': TwoLayerMLP(input_size, hidden_dim, 1),
@@ -129,10 +103,10 @@ class Critic(nn.Module):
         if isinstance(action, list) or isinstance(action, tuple):
             action = torch.stack([torch.tensor(a) for a in action]).to(self._device)
 
-        x = self.conv_reduction(encoding)  # (B),C,W,H -> (B),C
+        encoding = self.input_mlp(encoding)
         speed_embedding = self.speed_mlp(speed)
         action_embedding = self.action_mlp(action)
-        x_speed_action = torch.cat([x, speed_embedding, action_embedding], dim=1)  # [1024, 128, 128] -> 1280
+        x_speed_action = torch.cat([encoding, speed_embedding, action_embedding], dim=1)  # [1024, 128, 128] -> 1280
 
         # forward
         preds = self.branches[__HLCNUMBER_TO_HLC__[hlc]](x_speed_action)
@@ -140,13 +114,14 @@ class Critic(nn.Module):
 
 
 if __name__ == '__main__':
+    # DEPRECATED -->
     batch_size = 8
-    sample_input = torch.rand((batch_size, 1024, 4, 4))
+    sample_input = torch.rand((batch_size, 15))
     sample_speed = torch.rand((batch_size, 2))
     action = torch.tensor(np.random.random((batch_size, 3))).float()
     mse_loss = nn.MSELoss()
 
-    critic = Critic(3, 512)
+    critic = Critic(512, 3)
     actor = Actor(512, 3)
     q = critic(sample_input, sample_speed, action, "right")
     a = actor(sample_input, sample_speed, "right")
@@ -158,3 +133,4 @@ if __name__ == '__main__':
 
     q_loss.backward()
     a_loss.backward()
+    # <---

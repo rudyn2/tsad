@@ -98,24 +98,6 @@ if __name__ == '__main__':
     # endregion
 
     # region: init env
-    print(colored("[*] Initializing models", "white"))
-    visual = ADEncoder(backbone='mobilenetv3_small_075')
-    visual.load_state_dict(torch.load(args.vis_weights))
-    visual.to(device)
-    visual.eval()
-    visual.freeze()
-
-    temp = SequenceRNNEncoder(num_layers=2,
-                              hidden_size=1024,
-                              action__chn=1024,
-                              speed_chn=1024,
-                              bidirectional=True)
-    temp.load_state_dict(torch.load(args.temp_weights))
-    temp.to(device)
-    temp.eval()
-    temp.freeze()
-    print(colored("[+] Encoder models were initialized and loaded successfully!", "green"))
-
     print(colored("[*] Initializing environment", "white"))
     env_params = {
         # carla connection parameters+
@@ -143,7 +125,7 @@ if __name__ == '__main__':
         'max_ego_spawn_times': 200,  # maximum times to spawn ego vehicle
     }
     carla_raw_env = CarlaEnv(env_params)
-    carla_processed_env = EncodeWrapper(carla_raw_env, visual, temp, max_steps=args.max_episode_steps,
+    carla_processed_env = EncodeWrapper(carla_raw_env, max_steps=args.max_episode_steps,
                                         reward_scale=args.reward_scale,
                                         action_frequency=args.control_frequency, debug=args.debug)
     carla_processed_env.reset()
@@ -155,8 +137,7 @@ if __name__ == '__main__':
     print(colored("[*] Initializing actor critic models", "white"))
     actor = DiagGaussianActor(action_dim=control_action_dim,
                               hidden_dim=args.actor_hidden_dim,
-                              log_std_bounds=(-2, 5)
-                              )
+                              log_std_bounds=(-2, 5))
     critic = DoubleQCritic(action_dim=input_action_dim,
                            hidden_dim=args.critic_hidden_dim)
     target_critic = DoubleQCritic(action_dim=input_action_dim,
