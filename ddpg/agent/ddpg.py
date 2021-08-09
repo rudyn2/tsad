@@ -1,138 +1,191 @@
+import os
+import wandb
 import numpy as np
+
 import torch
 import torch.nn.functional as F
-import wandb
-import os
 
-# https://github.com/sweetice/Deep-reinforcement-learning-with-pytorch/blob/master/Char05%20DDPG/DDPG.py
+
+def soft_update(target, source, tau):
+    for target_param, param in zip(target.parameters(), source.parameters()):
+        target_param.data.copy_(target_param.data * (1.0 - tau) + param.data * tau)
+
+
+def hard_update(target, source):
+    for target_param, param in zip(target.parameters(), source.parameters()):
+        target_param.data.copy_(param.data)
+
+# https://github.com/MoritzTaylor/ddpg-pytorch
 class DDPG(object):
+
     def __init__(
         self, 
         actor,
         critic,
-        actor_target,
-        critic_target,
-
-        state_dim, 
-        action_dim: int = 2,
+        target_actor,
+        target_critic,
         action_range: tuple = (-1, 1),
         device: str = 'cuda',
         discount: float = 0.99,
-        tau: float = 0.005,
         actor_lr: float = 1e-4,
         critic_lr: float = 1e-4,
+        tau: float = 0.005, 
         actor_betas: tuple = (0.9, 0.999),
         actor_weight_decay: float = 4e-2,
         critic_betas: tuple = (0.9, 0.999),
         critic_weight_decay: float = 4e-2,
         batch_size: int = 1024,
         offline_proportion: float = 0.25,
-        update_iteration: int = 200,
         ):
+        """DDPG constructor
 
-        self.action_range = action_range
-        self.device = torch.device(device)
+        Args:
+            actor ([type]): [description]
+            critic ([type]): [description]
+            target_actor ([type]): [description]
+            target_critic ([type]): [description]
+            action_dim (int, optional): [description]. Defaults to 2.
+            device (str, optional): [description]. Defaults to 'cuda'.
+            discount (float, optional): [description]. Defaults to 0.99.
+            actor_lr (float, optional): [description]. Defaults to 1e-4.
+            critic_lr (float, optional): [description]. Defaults to 1e-4.
+            tau (float, optional): [description]. Defaults to 0.005.
+            actor_betas (tuple, optional): [description]. Defaults to (0.9, 0.999).
+            actor_weight_decay (float, optional): [description]. Defaults to 4e-2.
+            critic_betas (tuple, optional): [description]. Defaults to (0.9, 0.999).
+            critic_weight_decay (float, optional): [description]. Defaults to 4e-2.
+            batch_size (int, optional): [description]. Defaults to 1024.
+            offline_proportion (float, optional): [description]. Defaults to 0.25.
+        """        
         self.gamma = discount
-        self.tau = tau,
+        self.tau = tau
+        self.action_space = action_range
         self.batch_size = batch_size
         self.offline_proportion = offline_proportion
-        self.update_iteration = update_iteration
 
-        # Actor
-        self.actor = actor
-        self.actor_target = actor_target
-        self.actor_target.load_state_dict(self.actor.state_dict())
+        # Define the actor
+        self.actor = actor.to(device)
+        self.actor_target = target_actor.to(device)
+
+        # Define the critic
+        self.critic = critic.to(device)
+        self.critic_target = target_critic.to(device)
+
+        # Define the optimizers for both networks
         self.actor_optimizer = torch.optim.Adam(self.actor.parameters(),
                                                 lr=actor_lr,
                                                 betas=actor_betas,
                                                 weight_decay=actor_weight_decay)
-        self.actor.to(self.device)
-        self.actor_target.to(self.device)
-
-        # Critic
-        self.critic = critic
-        self.critic_target = critic_target
-        self.critic_target.load_state_dict(self.critic.state_dict())
         self.critic_optimizer = torch.optim.Adam(self.critic.parameters(),
                                                  lr=critic_lr,
                                                  betas=critic_betas,
                                                  weight_decay=critic_weight_decay)
-        self.critic.to(self.device)
-        self.critic_target.to(self.device)
+
+        # Make sure both targets are with the same weight
+        hard_update(self.actor_target, self.actor)
+        hard_update(self.critic_target, self.critic)
 
         self._step = 0
-        # Freeze target networks with respect to optimizers (only update via polyak averaging)
-        for p in self.critic_target.parameters():
-            p.requires_grad = False
-        for p in self.actor_target.parameters():
-            p.requires_grad = False
-        
-        self.train()
-        self.num_critic_update_iteration = 0
-        self.num_actor_update_iteration = 0
-        self.num_training = 0
     
     def train(self, training=True):
         self.training = training
         self.actor.train(training)
         self.critic.train(training)
 
-    def act(self, obs):
-        return self.actor(obs, obs['hlc'])
+    def act(self, state, action_noise=None):
+        """Evaluates the action to perform in a given state
 
-    def update(self, replay_buffer):
+        Args:
+            state ([type]): State to perform the action on in the env. 
+                            Used to evaluate the action.
+            action_noise ([type], optional): If not None, the noise to apply on the evaluated action. Defaults to None.
+                                                OrnsteinUhlenbeckActionNoise
+        Returns:
+            [type]: [description]
+        """        
+        x = state.to(self.device)
+
+        # Get the continous action value to perform in the env
+        self.actor.eval()  # Sets the actor in evaluation mode
+        mu = self.actor(x)
+        self.actor.train()  # Sets the actor in training mode
+        mu = mu.data
+
+        # During training we add noise for exploration
+        if action_noise is not None:
+            noise = torch.Tensor(action_noise.noise()).to(self.device)
+            mu += noise
+
+        # Clip the output according to the action space of the env
+        mu = mu.clamp(self.action_space.low[0], self.action_space.high[0])
+
+        return mu
+
+    def update_params(self, replay_buffer):
+        """Updates the parameters/networks of the agent according to the given batch.
+            This means we ...
+                1. Compute the targets
+                2. Update the Q-function/critic by one step of gradient descent
+                3. Update the policy/actor by one step of gradient ascent
+                4. Update the target networks through a soft update
+
+        Args:
+            replay_buffer ([type]): [description]
+
+        Returns:
+            [type]: [description]
+        """        
         self._step += 1
         hlc = 3
+        # Sample from replay buffer
+        online_samples, offline_samples = replay_buffer.sample(self.batch_size, self.offline_proportion)
 
-        for it in range(self.update_iteration):
-            # Sample replay buffer
-            online_samples, offline_samples = replay_buffer.sample(self.batch_size, self.offline_proportion)
-            state, action, reward, next_state, not_done =online_samples
-            done = torch.FloatTensor(1-not_done).to(self.device)
-            offline_obs, offline_act, _, _, _ = offline_samples
+        # Get tensors from the batch
+        state_batch, action_batch, reward_batch, next_state_batch, not_done_batch = online_samples
+        done_batch = 1 - not_done_batch
+        offline_obs, offline_act, _, _, _ = offline_samples
 
-            rewards = np.mean(reward[hlc])
-            wandb.log({'train/batch_reward': rewards})
+        # Retrieve only hlc=3 lane follow
+        state_batch = self._to_tensor(state_batch[hlc])
+        action_batch = self._to_tensor(action_batch[hlc]).float()
+        reward_batch = self._to_tensor(reward_batch[hlc])
+        next_state_batch = self._to_tensor(next_state_batch[hlc])
+        done_batch = self._to_tensor(done_batch[hlc])
 
-            # Compute the target Q value
-            target_Q = self.critic_target(next_state, self.actor_target(next_state))
-            target_Q = reward + (done * self.gamma * target_Q).detach()
+        rewards = np.mean(reward_batch[hlc])
+        wandb.log({'train/batch_reward': rewards})
 
-            # Get current Q estimate
-            current_Q = self.critic(state, action)
+        # Get the actions and the state values to compute the targets
+        next_action_batch = self.actor_target(next_state_batch)
+        next_state_action_values = self.critic_target(next_state_batch, next_action_batch.detach())
 
-            # Compute critic loss
-            critic_loss = F.mse_loss(current_Q, target_Q)
-            
-            # Optimize the critic
-            self.critic_optimizer.zero_grad()
-            critic_loss.backward()
-            self.critic_optimizer.step()
+        # Compute the target
+        expected_values = reward_batch + (1.0 - done_batch) * self.gamma * next_state_action_values
 
-            # Compute actor loss
-            actor_loss = -self.critic(state, self.actor(state)).mean()
-            wandb.log({
-                'Loss/critic_loss': critic_loss,
-                'Loss/actor_loss': actor_loss,
-            })
+        # TODO: Clipping the expected values here?
+        # expected_value = torch.clamp(expected_value, min_value, max_value)
 
-            # Optimize the actor
-            self.actor_optimizer.zero_grad()
-            actor_loss.backward()
-            self.actor_optimizer.step()
+        # Update the critic network
+        self.critic_optimizer.zero_grad()
+        state_action_batch = self.critic(state_batch, action_batch)
+        value_loss = F.mse_loss(state_action_batch, expected_values.detach())
+        value_loss.backward()
+        self.critic_optimizer.step()
 
-            # Update the frozen target models
-            for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):
-                target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+        # Update the actor network
+        self.actor_optimizer.zero_grad()
+        policy_loss = -self.critic(state_batch, self.actor(state_batch))
+        policy_loss = policy_loss.mean()
+        policy_loss.backward()
+        self.actor_optimizer.step()
 
-            for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
-                target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
+        # Update the target networks
+        soft_update(self.actor_target, self.actor, self.tau)
+        soft_update(self.critic_target, self.critic, self.tau)
 
-            self.num_actor_update_iteration += 1
-            self.num_critic_update_iteration += 1
+        return value_loss.item(), policy_loss.item()
 
     def save(self, dirname: str, tag: str = 'best'):
-
         actor_filename = os.path.join(dirname, f"{tag}_actor.pth")
         actor_target_filename = os.path.join(dirname, f"{tag}_actor_target.pth")
         critic_filename = os.path.join(dirname, f"{tag}_critic.pth")
@@ -143,3 +196,25 @@ class DDPG(object):
         torch.save(self.critic_target.state_dict(), critic_target_filename)
         wandb.save(actor_filename)
         wandb.save(critic_filename)
+    
+    def act_parser(self, two_dim_action: torch.Tensor) -> torch.Tensor:
+        output = torch.zeros(two_dim_action.shape[0], 3)
+        output[:, 0] = two_dim_action[:, 0]  # copy throttle-brake
+        output[:, 1] = -two_dim_action[:, 0]  # copy throttle-brake
+        output[:, 2] = two_dim_action[:, 1]  # copy steer
+
+        # clamp the actions
+        output = torch.max(torch.min(output, torch.tensor([[1, 1., 1]])), torch.tensor([[0, 0, -1.]]))
+        output = output.to(self.device)
+        return output.float()
+
+    def act_parser_invert(self, three_dim_action: torch.Tensor) -> torch.Tensor:
+        output = torch.zeros(three_dim_action.shape[0], 2)
+        output[:, 0] = three_dim_action[:, 0] - three_dim_action[:, 1]      # throttle - brake
+        output[:, 1] = three_dim_action[:, 2]   # steer
+        output = torch.clamp(output, min=-1, max=1)
+        output = output.to(self.device)
+        return output.detach().float()
+    
+    def _to_tensor(self, arr):
+        return torch.as_tensor(arr, device=self.device).float()
