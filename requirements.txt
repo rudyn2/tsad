@@ -11,3 +11,5 @@ timm
 matplotlib
 opencv-python
 torchvision==0.9.1
+stable-baselines[mpi]
+gym
