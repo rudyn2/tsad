@@ -11,4 +11,3 @@ timm
 matplotlib
 opencv-python
 torchvision==0.9.1
-gym
