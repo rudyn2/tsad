@@ -88,6 +88,11 @@ class DDPG(object):
         self._step = 0
     
     def train(self, training=True):
+        """[summary]
+
+        Args:
+            training (bool, optional): [description]. Defaults to True.
+        """        
         self.training = training
         self.actor.train(training)
         self.critic.train(training)
@@ -99,7 +104,6 @@ class DDPG(object):
             state ([type]): State to perform the action on in the env. 
                             Used to evaluate the action.
             action_noise ([type], optional): If not None, the noise to apply on the evaluated action. Defaults to None.
-                                                OrnsteinUhlenbeckActionNoise
         Returns:
             [type]: [description]
         """        
@@ -186,6 +190,12 @@ class DDPG(object):
         return value_loss.item(), policy_loss.item()
 
     def save(self, dirname: str, tag: str = 'best'):
+        """[summary]
+
+        Args:
+            dirname (str): [description]
+            tag (str, optional): [description]. Defaults to 'best'.
+        """        
         actor_filename = os.path.join(dirname, f"{tag}_actor.pth")
         actor_target_filename = os.path.join(dirname, f"{tag}_actor_target.pth")
         critic_filename = os.path.join(dirname, f"{tag}_critic.pth")
@@ -198,6 +208,14 @@ class DDPG(object):
         wandb.save(critic_filename)
     
     def act_parser(self, two_dim_action: torch.Tensor) -> torch.Tensor:
+        """[summary]
+
+        Args:
+            two_dim_action (torch.Tensor): [description]
+
+        Returns:
+            torch.Tensor: [description]
+        """        
         output = torch.zeros(two_dim_action.shape[0], 3)
         output[:, 0] = two_dim_action[:, 0]  # copy throttle-brake
         output[:, 1] = -two_dim_action[:, 0]  # copy throttle-brake
@@ -209,6 +227,14 @@ class DDPG(object):
         return output.float()
 
     def act_parser_invert(self, three_dim_action: torch.Tensor) -> torch.Tensor:
+        """[summary]
+
+        Args:
+            three_dim_action (torch.Tensor): [description]
+
+        Returns:
+            torch.Tensor: [description]
+        """        
         output = torch.zeros(three_dim_action.shape[0], 2)
         output[:, 0] = three_dim_action[:, 0] - three_dim_action[:, 1]      # throttle - brake
         output[:, 1] = three_dim_action[:, 2]   # steer
@@ -217,4 +243,12 @@ class DDPG(object):
         return output.detach().float()
     
     def _to_tensor(self, arr):
+        """[summary]
+
+        Args:
+            arr ([type]): [description]
+
+        Returns:
+            [type]: [description]
+        """        
         return torch.as_tensor(arr, device=self.device).float()
