@@ -138,6 +138,7 @@ class SACTrainer(object):
             action = action_proxy(action)
             wandb.log({f"instant/action/{name}": value for name, value in zip(["throttle", "brake", "steer"],
                                                                               action)})
+            wandb.log({"instant/speed": np.mean(obs["speed"])})
 
             # run training update
             if self.step >= self.num_seed_steps:
