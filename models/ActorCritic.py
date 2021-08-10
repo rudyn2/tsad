@@ -56,7 +56,7 @@ class Actor(nn.Module):
 
         if isinstance(obs, list) or isinstance(obs, tuple):
             # if the observation is an iterable, then this method is going to be used for TRAINING in a batch-wise
-            encoding = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0)
+            encoding = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0).float()
             speed = torch.stack([torch.tensor(o['speed'], device=self._device) for o in obs], dim=0).float()
         elif isinstance(obs, dict):
             # if the observation is a dict, then this method is going to be used for ACTION SELECTION
@@ -84,7 +84,7 @@ class Critic(nn.Module):
         super(Critic, self).__init__()
         self._input_channels = 768
         self._device = 'cuda'
-        self.input_mlp = TwoLayerMLP(3, 128, 64)
+        self.input_mlp = TwoLayerMLP(15, 128, 64)
         self.speed_mlp = TwoLayerMLP(3, 128, 64)
         self.action_mlp = TwoLayerMLP(action_dim, 128, 64)
 

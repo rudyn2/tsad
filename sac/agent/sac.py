@@ -209,8 +209,8 @@ class SACAgent(Agent):
 
         self.update_critic(obs, act, reward, next_obs, not_done)
 
-        if step % self.actor_bc_update_frequency == 0:
-            self.update_actor_with_bc(offline_obs, offline_act)
+        # if step % self.actor_bc_update_frequency == 0:
+        #     self.update_actor_with_bc(offline_obs, offline_act)
 
         if step % self.actor_update_frequency == 0:
             self.update_actor_and_alpha(obs)

@@ -24,13 +24,6 @@ if __name__ == '__main__':
     carla_config.add_argument('--vehicles', default=100, type=int, help='Number of vehicles in the simulation.')
     carla_config.add_argument('--walkers', default=50, type=int, help='Number of walkers in the simulation.')
 
-    # encoder weight's
-    encoders_group = parser.add_argument_group('Encoders config')
-    parser.add_argument('--vis-weights', default='../dataset/weights/best_model_1_validation_accuracy=-0.5557.pt',
-                        type=str, help="Path to visual encoder weight's")
-    parser.add_argument('--temp-weights', default='../dataset/weights/best_VanillaRNNEncoder(2).pth',
-                        help='Path to temporal encoder weights')
-
     # SAC parameters
     rl_group = parser.add_argument_group('RL Config')
     rl_group.add_argument('--num-seed', default=2000, type=int, help='Number of seed steps before starting to train.')
