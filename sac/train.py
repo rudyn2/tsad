@@ -40,16 +40,12 @@ if __name__ == '__main__':
     rl_group.add_argument('--lane-distance-reward-weight', default=1, type=float, help='Lane distance reward weight')
 
     models_parameters = parser.add_argument_group('Actor-Critic config')
-    models_parameters.add_argument('--actor-hidden-dim', type=int, default=512, help='Size of hidden layer in the '
+    models_parameters.add_argument('--actor-hidden-dim', type=int, default=128, help='Size of hidden layer in the '
                                                                                      'actor model.')
-    models_parameters.add_argument('--critic-hidden-dim', type=int, default=512, help='Size of hidden layer in the '
+    models_parameters.add_argument('--critic-hidden-dim', type=int, default=128, help='Size of hidden layer in the '
                                                                                       'critic model.')
 
     loss_parameters = parser.add_argument_group('Loss parameters')
-    loss_parameters.add_argument('--bc-factor', type=float, default=0.3,
-                                 help='Behavioral cloning loss component weight.')
-    loss_parameters.add_argument('--actor-factor', type=float, default=0.3,
-                                 help='Actor SAC loss component weight.')
     loss_parameters.add_argument('--actor-l2', type=float, default=4e-2,
                                  help='L2 regularization for the actor model.')
     loss_parameters.add_argument('--critic-l2', type=float, default=4e-2,
@@ -185,4 +181,3 @@ if __name__ == '__main__':
     finally:
         print(colored("\nTraning finished!", "green"))
         trainer.end()
-

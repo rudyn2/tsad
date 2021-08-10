@@ -30,6 +30,27 @@ class TwoLayerMLP(nn.Module):
         return x
 
 
+class ThreeLayerMLP(nn.Module):
+
+    def __init__(self, input_dim: int, hidden_sizes: tuple, output_size: int):
+        super(ThreeLayerMLP, self).__init__()
+        self._input_dim = input_dim
+        self._hidden_sizes = hidden_sizes
+        self._output_size = output_size
+        self.fc1 = nn.Linear(self._input_dim, self._hidden_sizes[0])
+        self.fc2 = nn.Linear(self._hidden_sizes[0], self._hidden_sizes[1])
+        self.fc3 = nn.Linear(self._hidden_sizes[1], self._output_size)
+        self.relu = nn.ReLU()
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.fc2(x)
+        x = self.relu(x)
+        x = self.fc3(x)
+        return x
+
+
 class Actor(nn.Module):
     """
     Output: a (3,)
@@ -41,15 +62,13 @@ class Actor(nn.Module):
         self._device = 'cuda'
         self._action_dim = action_dim
         self._hidden_size = hidden_size
-        self.input_mlp = TwoLayerMLP(15, 128, 64)
-        self.speed_mlp = TwoLayerMLP(3, 128, 64)
 
-        input_size = 64 + 64
+        input_size = 15
         self.branches = torch.nn.ModuleDict({
-            'left': TwoLayerMLP(input_size, hidden_size, self._action_dim * 2),
-            'right': TwoLayerMLP(input_size, hidden_size, self._action_dim * 2),
-            'follow_lane': TwoLayerMLP(input_size, hidden_size, self._action_dim * 2),
-            'straight': TwoLayerMLP(input_size, hidden_size, self._action_dim * 2)
+            'left': ThreeLayerMLP(input_size, (hidden_size, hidden_size // 2), self._action_dim * 2),
+            'right': ThreeLayerMLP(input_size, (hidden_size, hidden_size // 2), self._action_dim * 2),
+            'follow_lane': ThreeLayerMLP(input_size, (hidden_size, hidden_size // 2), self._action_dim * 2),
+            'straight': ThreeLayerMLP(input_size, (hidden_size, hidden_size // 2), self._action_dim * 2)
         })
 
     def forward(self, obs: Union[list, tuple, dict], hlc):
@@ -57,20 +76,14 @@ class Actor(nn.Module):
         if isinstance(obs, list) or isinstance(obs, tuple):
             # if the observation is an iterable, then this method is going to be used for TRAINING in a batch-wise
             encoding = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0).float()
-            speed = torch.stack([torch.tensor(o['speed'], device=self._device) for o in obs], dim=0).float()
         elif isinstance(obs, dict):
             # if the observation is a dict, then this method is going to be used for ACTION SELECTION
             encoding = torch.tensor(obs['encoding'], device=self._device).unsqueeze(0).float()
-            speed = torch.tensor(obs['speed'], device=self._device).unsqueeze(0).float()
         else:
             raise ValueError(f"Expected input of type list, tuple or dict but got: {type(obs)}")
 
-        encoding = self.input_mlp(encoding)
-        speed_embedding = self.speed_mlp(speed)  # B,2, -> 128,
-        x_speed = torch.cat([encoding, speed_embedding], dim=1)  # B,[1024, 128] -> B,1152
-
         # forward
-        preds = self.branches[__HLCNUMBER_TO_HLC__[hlc]](x_speed)
+        preds = self.branches[__HLCNUMBER_TO_HLC__[hlc]](encoding)
         return preds
 
 
@@ -84,32 +97,25 @@ class Critic(nn.Module):
         super(Critic, self).__init__()
         self._input_channels = 768
         self._device = 'cuda'
-        self.input_mlp = TwoLayerMLP(15, 128, 64)
-        self.speed_mlp = TwoLayerMLP(3, 128, 64)
-        self.action_mlp = TwoLayerMLP(action_dim, 128, 64)
 
-        input_size = 64 + 64 + 64
+        input_size = 15 + action_dim
         self.branches = torch.nn.ModuleDict({
-            'left': TwoLayerMLP(input_size, hidden_dim, 1),
-            'right': TwoLayerMLP(input_size, hidden_dim, 1),
-            'follow_lane': TwoLayerMLP(input_size, hidden_dim, 1),
-            'straight': TwoLayerMLP(input_size, hidden_dim, 1)
+            'left': ThreeLayerMLP(input_size, (hidden_dim, hidden_dim // 2), 1),
+            'right': ThreeLayerMLP(input_size, (hidden_dim, hidden_dim // 2), 1),
+            'follow_lane': ThreeLayerMLP(input_size, (hidden_dim, hidden_dim // 2), 1),
+            'straight': ThreeLayerMLP(input_size, (hidden_dim, hidden_dim // 2), 1)
         })
 
     def forward(self, obs: Union[list, tuple], action: Union[list, tuple, torch.Tensor], hlc: int):
         encoding = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0).float()
-        speed = torch.stack([torch.tensor(o['speed'], device=self._device) for o in obs], dim=0).float()
 
         if isinstance(action, list) or isinstance(action, tuple):
             action = torch.stack([torch.tensor(a) for a in action]).to(self._device)
 
-        encoding = self.input_mlp(encoding)
-        speed_embedding = self.speed_mlp(speed)
-        action_embedding = self.action_mlp(action)
-        x_speed_action = torch.cat([encoding, speed_embedding, action_embedding], dim=1)  # [1024, 128, 128] -> 1280
+        x_action = torch.cat([encoding, action], dim=1)
 
         # forward
-        preds = self.branches[__HLCNUMBER_TO_HLC__[hlc]](x_speed_action)
+        preds = self.branches[__HLCNUMBER_TO_HLC__[hlc]](x_action)
         return preds
 
 
