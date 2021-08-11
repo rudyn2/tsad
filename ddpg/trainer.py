@@ -80,6 +80,7 @@ class DDPGTrainer(object):
             while not done:
                 with utils.eval_mode(self.agent):
                     action = self.agent.act(obs)
+                action = np.squeeze(action.cpu().data.numpy())
                 obs, reward, done, _ = self.env.step(action_proxy(action))
                 if self.log_eval:
                     wandb.log({f"instant/action/{name}": value for name, value in zip(["throttle", "brake", "steer"],
@@ -139,6 +140,7 @@ class DDPGTrainer(object):
             else:
                 with utils.eval_mode(self.agent):
                     action = self.agent.act(obs, self.noise)
+                    action = np.squeeze(action.cpu().data.numpy())
 
             # AGENT ACTION DIM PROXY: 2 -> 3
             action = action_proxy(action)
@@ -147,7 +149,7 @@ class DDPGTrainer(object):
 
             # run training update
             if self.step >= self.num_seed_steps:
-                self.agent.update(self.replay_buffer, self.step)
+                self.agent.update(self.replay_buffer)
 
             # save checkpoints
             if self.step % 50000 == 0:

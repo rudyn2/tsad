@@ -57,7 +57,7 @@ class Actor(nn.Module):
     Input: s (1024x4x4)
     """
 
-    def __init__(self, hidden_size: int, action_dim: int = 2):
+    def __init__(self, hidden_size: int, action_dim: int = 2, output_factor: int = 2):
         super(Actor, self).__init__()
         self._device = 'cuda'
         self._action_dim = action_dim
@@ -65,10 +65,10 @@ class Actor(nn.Module):
 
         input_size = 15
         self.branches = torch.nn.ModuleDict({
-            'left': ThreeLayerMLP(input_size, (hidden_size, hidden_size // 2), self._action_dim * 2),
-            'right': ThreeLayerMLP(input_size, (hidden_size, hidden_size // 2), self._action_dim * 2),
-            'follow_lane': ThreeLayerMLP(input_size, (hidden_size, hidden_size // 2), self._action_dim * 2),
-            'straight': ThreeLayerMLP(input_size, (hidden_size, hidden_size // 2), self._action_dim * 2)
+            'left': ThreeLayerMLP(input_size, (hidden_size, hidden_size // 2), self._action_dim * output_factor),
+            'right': ThreeLayerMLP(input_size, (hidden_size, hidden_size // 2), self._action_dim * output_factor),
+            'follow_lane': ThreeLayerMLP(input_size, (hidden_size, hidden_size // 2), self._action_dim * output_factor),
+            'straight': ThreeLayerMLP(input_size, (hidden_size, hidden_size // 2), self._action_dim * output_factor)
         })
 
     def forward(self, obs: Union[list, tuple, dict], hlc):
@@ -111,7 +111,7 @@ class Critic(nn.Module):
 
         if isinstance(action, list) or isinstance(action, tuple):
             action = torch.stack([torch.tensor(a) for a in action]).to(self._device)
-
+        
         x_action = torch.cat([encoding, action], dim=1)
 
         # forward

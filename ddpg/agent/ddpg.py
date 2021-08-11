@@ -62,6 +62,7 @@ class DDPG(object):
         self.action_space = action_range
         self.batch_size = batch_size
         self.offline_proportion = offline_proportion
+        self.device = device
 
         # Define the actor
         self.actor = actor.to(device)
@@ -87,6 +88,9 @@ class DDPG(object):
 
         self._step = 0
     
+    def reset(self):
+        pass
+
     def train(self, training=True):
         """[summary]
 
@@ -101,17 +105,16 @@ class DDPG(object):
         """Evaluates the action to perform in a given state
 
         Args:
-            state ([type]): State to perform the action on in the env. 
+            state ([dict]): State to perform the action on in the env. 
                             Used to evaluate the action.
+                            {"encoding": array([15]), "speed": array([3]), "hlc": int}
             action_noise ([type], optional): If not None, the noise to apply on the evaluated action. Defaults to None.
         Returns:
             [type]: [description]
         """        
-        x = state.to(self.device)
-
         # Get the continous action value to perform in the env
         self.actor.eval()  # Sets the actor in evaluation mode
-        mu = self.actor(x)
+        mu = self.actor(state, state['hlc'])
         self.actor.train()  # Sets the actor in training mode
         mu = mu.data
 
@@ -121,11 +124,11 @@ class DDPG(object):
             mu += noise
 
         # Clip the output according to the action space of the env
-        mu = mu.clamp(self.action_space.low[0], self.action_space.high[0])
+        mu = mu.clamp(self.action_space[0], self.action_space[0])
 
         return mu
 
-    def update_params(self, replay_buffer):
+    def update(self, replay_buffer):
         """Updates the parameters/networks of the agent according to the given batch.
             This means we ...
                 1. Compute the targets
@@ -146,22 +149,22 @@ class DDPG(object):
 
         # Get tensors from the batch
         state_batch, action_batch, reward_batch, next_state_batch, not_done_batch = online_samples
-        done_batch = 1 - not_done_batch
         offline_obs, offline_act, _, _, _ = offline_samples
 
         # Retrieve only hlc=3 lane follow
-        state_batch = self._to_tensor(state_batch[hlc])
+        state_batch = state_batch[hlc]
         action_batch = self._to_tensor(action_batch[hlc]).float()
         reward_batch = self._to_tensor(reward_batch[hlc])
-        next_state_batch = self._to_tensor(next_state_batch[hlc])
-        done_batch = self._to_tensor(done_batch[hlc])
+        next_state_batch = next_state_batch[hlc]
+        not_done_batch = self._to_tensor(not_done_batch[hlc])
+        done_batch = 1 - not_done_batch
 
-        rewards = np.mean(reward_batch[hlc])
-        wandb.log({'train/batch_reward': rewards})
+        rewards = torch.mean(reward_batch)
+        wandb.log({'train/batch_reward': rewards.cpu().data.numpy()})
 
         # Get the actions and the state values to compute the targets
-        next_action_batch = self.actor_target(next_state_batch)
-        next_state_action_values = self.critic_target(next_state_batch, next_action_batch.detach())
+        next_action_batch = self.actor_target(next_state_batch, hlc)
+        next_state_action_values = self.critic_target(next_state_batch, self.act_parser(next_action_batch.detach()), hlc)
 
         # Compute the target
         expected_values = reward_batch + (1.0 - done_batch) * self.gamma * next_state_action_values
@@ -171,14 +174,14 @@ class DDPG(object):
 
         # Update the critic network
         self.critic_optimizer.zero_grad()
-        state_action_batch = self.critic(state_batch, action_batch)
+        state_action_batch = self.critic(state_batch, action_batch, hlc)
         value_loss = F.mse_loss(state_action_batch, expected_values.detach())
         value_loss.backward()
         self.critic_optimizer.step()
 
         # Update the actor network
         self.actor_optimizer.zero_grad()
-        policy_loss = -self.critic(state_batch, self.actor(state_batch))
+        policy_loss = -self.critic(state_batch, self.act_parser(self.actor(state_batch, hlc)), hlc)
         policy_loss = policy_loss.mean()
         policy_loss.backward()
         self.actor_optimizer.step()

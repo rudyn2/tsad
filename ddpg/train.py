@@ -127,10 +127,10 @@ if __name__ == '__main__':
 
     # region: init agent
     print(colored("[*] Initializing actor critic models", "white"))
-    actor = Actor(hidden_size=args.actor_hidden_dim)
-    target_actor = Actor(hidden_size=args.actor_hidden_dim)
-    critic = Critic(hidden_dim=args.critic_hidden_dim, action_dim=control_action_dim)
-    target_critic = Critic(hidden_dim=args.critic_hidden_dim, action_dim=control_action_dim)
+    actor = Actor(hidden_size=args.actor_hidden_dim, output_factor=1)
+    target_actor = Actor(hidden_size=args.actor_hidden_dim, output_factor=1)
+    critic = Critic(hidden_dim=args.critic_hidden_dim, action_dim=input_action_dim)
+    target_critic = Critic(hidden_dim=args.critic_hidden_dim, action_dim=input_action_dim)
 
     agent = DDPG(
         actor=actor,
