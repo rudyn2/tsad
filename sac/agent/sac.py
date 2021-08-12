@@ -100,8 +100,8 @@ class SACAgent(Agent):
 
     @property
     def alpha(self):
-        return torch.tensor(0.3 * self._eps(self._step), requires_grad=False)
-        # return self.log_alpha.exp()
+        # return torch.tensor(0.3 * self._eps(self._step), requires_grad=False)
+        return self.log_alpha.exp()
 
     def act(self, obs, sample=False):
         dist = self.actor(obs, obs['hlc'])
