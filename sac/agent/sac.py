@@ -148,7 +148,7 @@ class SACAgent(Agent):
         wandb.log({'train_critic/loss': critic_loss})
 
         # Optimize the critic
-        self.critic_optimizer.zero_grad(set_to_none=True)
+        self.critic_optimizer.zero_grad()
         critic_loss.backward()
         self.critic_optimizer.step()
 
@@ -172,12 +172,12 @@ class SACAgent(Agent):
         wandb.log({'train_actor/entropy': -log_prob.mean().item()})
 
         # optimize the actor
-        self.actor_optimizer.zero_grad(set_to_none=True)
+        self.actor_optimizer.zero_grad()
         sac_loss.backward()
         self.actor_optimizer.step()
 
         if self.learnable_temperature:
-            self.log_alpha_optimizer.zero_grad(set_to_none=True)
+            self.log_alpha_optimizer.zero_grad()
             alpha_loss = (- self.alpha * (log_prob + self.target_entropy).detach()).mean()
             wandb.log({'train_alpha/loss': alpha_loss})
             wandb.log({'train_alpha/value': self.alpha})
@@ -192,7 +192,7 @@ class SACAgent(Agent):
         bc_loss = - log_prob_e.mean()
         wandb.log({'train_actor/bc_loss': bc_loss.item()})
 
-        self.actor_optimizer.zero_grad(set_to_none=True)
+        self.actor_optimizer.zero_grad()
         bc_loss.backward()
         self.actor_optimizer.step()
 
