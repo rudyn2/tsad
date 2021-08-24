@@ -44,6 +44,8 @@ if __name__ == '__main__':
                                                                                      'actor model.')
     models_parameters.add_argument('--critic-hidden-dim', type=int, default=128, help='Size of hidden layer in the '
                                                                                       'critic model.')
+    models_parameters.add_argument('--actor-weights', type=str, default=None, help='Path to actor weights')
+    models_parameters.add_argument('--critic-weights', type=str, default=None, help='Path to critic weights')
 
     loss_parameters = parser.add_argument_group('Loss parameters')
     loss_parameters.add_argument('--actor-l2', type=float, default=4e-2,
@@ -127,10 +129,20 @@ if __name__ == '__main__':
     actor = DiagGaussianActor(action_dim=control_action_dim,
                               hidden_dim=args.actor_hidden_dim,
                               log_std_bounds=(-2, 5))
+    if args.actor_weights:
+        actor.load_state_dict(torch.load(args.actor_weights))
+
     critic = DoubleQCritic(action_dim=input_action_dim,
                            hidden_dim=args.critic_hidden_dim)
     target_critic = DoubleQCritic(action_dim=input_action_dim,
                                   hidden_dim=args.critic_hidden_dim)
+
+    if args.critic_weights:
+        critic.load_state_dict(torch.load(args.critic_weights))
+        target_critic.load_state_dict(torch.load(args.critic_weights))
+
+    actor.train()
+    critic.train()
     agent = SACAgent(actor=actor,
                      critic=critic,
                      target_critic=target_critic,
