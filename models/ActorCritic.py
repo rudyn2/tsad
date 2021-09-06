@@ -57,13 +57,12 @@ class Actor(nn.Module):
     Input: s (1024x4x4)
     """
 
-    def __init__(self, hidden_size: int, action_dim: int = 2, output_factor: int = 2):
+    def __init__(self, input_size: int, hidden_size: int, action_dim: int = 2, output_factor: int = 2):
         super(Actor, self).__init__()
         self._device = 'cuda'
         self._action_dim = action_dim
         self._hidden_size = hidden_size
 
-        input_size = 15
         self.branches = torch.nn.ModuleDict({
             'left': ThreeLayerMLP(input_size, (hidden_size, hidden_size // 2), self._action_dim * output_factor),
             'right': ThreeLayerMLP(input_size, (hidden_size, hidden_size // 2), self._action_dim * output_factor),
@@ -83,6 +82,7 @@ class Actor(nn.Module):
             raise ValueError(f"Expected input of type list, tuple or dict but got: {type(obs)}")
 
         # forward
+        encoding = torch.flatten(encoding, start_dim=1)
         preds = self.branches[__HLCNUMBER_TO_HLC__[hlc]](encoding)
         return preds
 

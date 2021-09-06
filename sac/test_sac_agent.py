@@ -6,7 +6,7 @@ if __name__ == '__main__':
     mixed_replay_buffer = MixedReplayBuffer(512,
                                             reward_weights=(0.3, 0.3, 0.3),
                                             offline_buffer_hdf5='../dataset/encodings/encodings.hdf5',
-                                            offline_buffer_json='../dataset/encodings/encodings.json')
+                                            offline_buffer_json='../dataset/encodings/carla_v7_clean_encodings.json')
     actor = DiagGaussianActor(action_dim=2,
                               hidden_dim=256,
                               log_std_bounds=(-3, 3)
