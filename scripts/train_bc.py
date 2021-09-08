@@ -36,6 +36,8 @@ class BCTrainer(object):
                  lr: float = 0.0001,
                  batch_size: int = 128,
                  epochs: int = 100,
+                 eval_frequency: int = 20,
+                 eval_episodes: int = 3,
                  use_wandb: bool = False
                  ):
         self._actor = actor
@@ -43,6 +45,8 @@ class BCTrainer(object):
         self._epochs = epochs
         self._actor_optimizer = torch.optim.Adam(self._actor.parameters(), lr=lr)
         self._wandb = use_wandb
+        self._eval_frequency = eval_frequency
+        self._eval_episode = eval_episodes
 
         self._batch_size = batch_size
         self._device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -78,9 +82,12 @@ class BCTrainer(object):
                     sys.stdout.write(f"Epoch={e}(hlc={hlc}) [{i}/{len(hlc_loader)}] bc_loss={bc_loss.item():.2f}")
                     sys.stdout.flush()
 
+            if e % self._eval_frequency == 0:
+                self.eval()
+
 
 if __name__ == '__main__':
     actor = DiagGaussianActor(input_size=15, hidden_dim=64, action_dim=3, log_std_bounds=(-2, 5))
     dataset = AffordancesDataset('/Users/rudy/Documents/affordances/batch_1')
-    trainer = BCTrainer(actor, dataset)
+    trainer = BCTrainer(actor, dataset, use_wandb=True)
     trainer.run()
