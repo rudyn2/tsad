@@ -72,10 +72,9 @@ class BCTrainer(object):
         print("\nEvaluating...")
         total_reward = 0
         for e in range(self._eval_episode):
-            obs = env.reset()
+            obs = self._env.reset()
             episode_reward = 0
             done = False
-            sys.stdout.write("\n")
             while not done:
                 start = time.time()
                 dist = self._actor(dict(encoding=obs["affordances"]), hlc=int(obs["hlc"])-1)
@@ -83,7 +82,7 @@ class BCTrainer(object):
                 action = action.clamp(-1, 1)
                 action = list(to_np(action[0]))
                 speed = np.linalg.norm(obs["speed"])
-                obs, rew, done, _ = env.step(action=action)
+                obs, rew, done, _ = self._env.step(action=action)
                 episode_reward += rew
 
                 fps = 1 / (time.time() - start)
@@ -154,7 +153,7 @@ if __name__ == '__main__':
     parser.add_argument('-T', default=200, type=int,
                         help='number of frames to record per ego execution')
     parser.add_argument('-t', '--town', default='Town01', type=str, help="town to use")
-    parser.add_argument('-ve', '--vehicles', default=50, type=int,
+    parser.add_argument('-ve', '--vehicles', default=100, type=int,
                         help="number of vehicles to spawn in the simulation")
     parser.add_argument('-wa', '--walkers', default=0, type=int, help="number of walkers to spawn in the simulation")
     parser.add_argument('--skip-frames', default=50, type=int)
@@ -191,4 +190,4 @@ if __name__ == '__main__':
     actor = DiagGaussianActor(input_size=15, hidden_dim=64, action_dim=3, log_std_bounds=(-2, 5))
     dataset = AffordancesDataset(args.data)
     trainer = BCTrainer(actor, dataset, env, use_wandb=False)
-    trainer.run()
+    trainer.eval()
