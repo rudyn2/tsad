@@ -59,7 +59,7 @@ class Actor(nn.Module):
 
     def __init__(self, input_size: int, hidden_size: int, action_dim: int = 2, output_factor: int = 2):
         super(Actor, self).__init__()
-        self._device = 'cuda'
+        self._device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self._action_dim = action_dim
         self._hidden_size = hidden_size
 

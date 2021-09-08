@@ -4,14 +4,23 @@ import numpy as np
 from tqdm import tqdm
 from torch.utils.data import Dataset
 import torch
+from collections import defaultdict
 
 
-class AffordancesDataset(Dataset):
+HLC_TO_NUMBER = {
+        'RIGHT': 0,
+        'LEFT': 1,
+        'STRAIGHT': 2,
+        'LANEFOLLOW': 3
+    }
+
+
+class AffordancesDataset(object):
     def __init__(self, data_folder: str) -> None:
         super().__init__()
         self._data_folder = data_folder
         self._data_cache = {}
-        self._timestamps_list = []
+        self.timestamps_lists = defaultdict(list)
 
         p = Path(data_folder)
         assert(p.is_dir())
@@ -23,7 +32,6 @@ class AffordancesDataset(Dataset):
                 metadata = json.load(f)
                 self._push_data(metadata, path)
             del metadata
-        
 
     def _get_episode_file(self, episode, metadata):
         date = metadata.name.split('.')[0]
@@ -34,20 +42,21 @@ class AffordancesDataset(Dataset):
         print(f"Warning: data file not found {path}")
 
     def _push_data(self, metadata, metadata_path):
-        for ep_key, episode in metadata.items():
+        for ep_key, episode_metadata in metadata.items():
             data_path = self._get_episode_file(ep_key, metadata_path)
-            self._data_cache[ep_key] = episode
+            self._data_cache[ep_key] = episode_metadata
             episode_data = np.load(data_path)
-            for t_key in episode.keys():
+            for t_key in episode_metadata.keys():
                 affordances = episode_data[t_key]
+                hlc = HLC_TO_NUMBER[episode_metadata[t_key]['command']]
                 self._data_cache[ep_key][t_key]['affordances'] = affordances
-                self._timestamps_list.append({
+                self.timestamps_lists[hlc].append({
                     'episode': ep_key,
                     'timestamp': t_key,
                 })
 
-    def __getitem__(self, index: int):
-        timestamp = self._timestamps_list[index]
+    def get_item(self, index: int, hlc: int):
+        timestamp = self.timestamps_lists[hlc][index]
         ep_key, t_key = timestamp['episode'], timestamp['timestamp']
 
         affordances = torch.tensor(self._data_cache[ep_key][t_key]['affordances']).float()
@@ -62,10 +71,26 @@ class AffordancesDataset(Dataset):
         return affordances, control, command
     
     def __len__(self):
-        return len(self._timestamps_list)
+        return sum([len(t_list) for t_list in self.timestamps_lists.values()])
+
+
+class HLCAffordanceDataset(Dataset):
+
+    def __init__(self,
+                 affordance_dataset: AffordancesDataset,
+                 hlc: int):
+        self._dataset = affordance_dataset
+        self._hlc = hlc
+
+    def __getitem__(self, index: int):
+        return self._dataset.get_item(index, self._hlc)
+
+    def __len__(self):
+        return len(self._dataset.timestamps_lists[self._hlc])
 
 
 if __name__ == "__main__":
-    path = '/home/johnny/Descargas/data'
+    path = '/Users/rudy/Documents/affordances/'
     dataset = AffordancesDataset(path)
-    dataset[10]
+    hlc_dataset = HLCAffordanceDataset(dataset, hlc=3)
+    item = hlc_dataset[0]
