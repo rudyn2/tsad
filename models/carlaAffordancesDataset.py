@@ -59,12 +59,12 @@ class AffordancesDataset(object):
         timestamp = self.timestamps_lists[hlc][index]
         ep_key, t_key = timestamp['episode'], timestamp['timestamp']
 
-        affordances = torch.tensor(self._data_cache[ep_key][t_key]['affordances']).float()
+        affordances = self._data_cache[ep_key][t_key]['affordances']
 
         steer = self._data_cache[ep_key][t_key]['control']['steer']
         brake = self._data_cache[ep_key][t_key]['control']['brake']
         throttle = self._data_cache[ep_key][t_key]['control']['throttle']
-        control = torch.tensor([steer, throttle, brake]).float()
+        control = np.array([steer, throttle, brake])
         
         command = self._data_cache[ep_key][t_key]['command']
 
