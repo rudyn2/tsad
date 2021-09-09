@@ -31,7 +31,6 @@ class AffordancesDataset(object):
             with open(path) as f:
                 metadata = json.load(f)
                 self._push_data(metadata, path)
-            del metadata
 
     def _get_episode_file(self, episode, metadata):
         date = metadata.name.split('.')[0]
