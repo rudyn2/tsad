@@ -162,6 +162,8 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
+    wandb.init(project='tsad', entity='autonomous-driving', name='bc-train')
+
     env = CarlaEnv({
         # carla connection parameters+
         'host': args.host,
@@ -189,5 +191,5 @@ if __name__ == '__main__':
     })
     actor = DiagGaussianActor(input_size=15, hidden_dim=64, action_dim=3, log_std_bounds=(-2, 5))
     dataset = AffordancesDataset(args.data)
-    trainer = BCTrainer(actor, dataset, env, use_wandb=False)
+    trainer = BCTrainer(actor, dataset, env, use_wandb=True)
     trainer.eval()
