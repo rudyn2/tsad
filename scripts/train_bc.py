@@ -183,7 +183,7 @@ if __name__ == '__main__':
         'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
         'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
         'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
-        'max_time_episode': 1000,  # maximum timesteps per episode
+        'max_time_episode': 500,  # maximum timesteps per episode
         'max_waypt': 12,  # maximum number of waypoints
         'd_behind': 12,  # distance behind the ego vehicle (meter)
         'out_lane_thres': 2.0,  # threshold for out of lane
