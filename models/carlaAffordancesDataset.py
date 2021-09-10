@@ -63,7 +63,7 @@ class AffordancesDataset(object):
         steer = self._data_cache[ep_key][t_key]['control']['steer']
         brake = self._data_cache[ep_key][t_key]['control']['brake']
         throttle = self._data_cache[ep_key][t_key]['control']['throttle']
-        control = np.array([steer, throttle, brake])
+        control = np.array([throttle, brake, steer])
         speed = self._data_cache[ep_key][t_key]['speed']
 
         command = self._data_cache[ep_key][t_key]['command']

@@ -8,7 +8,7 @@ import time
 
 from sac.agent.actor import DiagGaussianActor
 from models.carlaAffordancesDataset import AffordancesDataset, HLCAffordanceDataset
-from gym_carla.envs.carla_env import CarlaEnv
+from gym_carla.envs.carla_pid_env import CarlaPidEnv
 
 HLC_TO_NUMBER = {
     'RIGHT': 0,
@@ -34,7 +34,8 @@ def collate_fn(samples: list) -> (dict, dict):
     obs, act = [], []
     for t in samples:
         obs.append(dict(encoding=t[0]))
-        act.append(t[2])    # t[2] = speed, t[1] = control
+        # target_speed, steer
+        act.append(np.array([t[2], t[1][2]]))    # t[2] = speed, t[1] = control
     return obs, act
 
 
@@ -46,7 +47,7 @@ class BCTrainer(object):
     def __init__(self,
                  actor: DiagGaussianActor,
                  dataset: AffordancesDataset,
-                 env: CarlaEnv,
+                 env: CarlaPidEnv,
                  lr: float = 0.0001,
                  batch_size: int = 128,
                  epochs: int = 100,
@@ -93,9 +94,8 @@ class BCTrainer(object):
                 if self._wandb:
                     wandb.log({
                         "eval/instant/speed": speed,
-                        "eval/instant/throttle": action[0],
-                        "eval/instant/brake": action[1],
-                        "eval/instant/steer": action[2],
+                        "eval/instant/target_speed": action[0],
+                        "eval/instant/steer": action[1],
                     })
 
             if self._wandb:
@@ -165,7 +165,7 @@ if __name__ == '__main__':
 
     wandb.init(project='tsad', entity='autonomous-driving', name='bc-train')
 
-    env = CarlaEnv({
+    env = CarlaPidEnv({
         # carla connection parameters+
         'host': args.host,
         'port': args.port,  # connection port
