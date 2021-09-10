@@ -50,7 +50,7 @@ class BCTrainer(object):
                  lr: float = 0.0001,
                  batch_size: int = 128,
                  epochs: int = 100,
-                 eval_frequency: int = 50,
+                 eval_frequency: int = 10,
                  eval_episodes: int = 3,
                  use_wandb: bool = False
                  ):
@@ -117,6 +117,7 @@ class BCTrainer(object):
         train_loaders = {hlc: DataLoader(HLCAffordanceDataset(self._dataset, hlc=hlc),
                                          batch_size=self._batch_size, collate_fn=collate_fn,
                                          shuffle=True) for hlc in range(4)}
+        steps = {0: 0, 1: 0, 2: 0, 3: 0}
         for e in range(1, self._epochs + 1):
             for hlc in range(4):
                 hlc_loader = train_loaders[hlc]
@@ -129,7 +130,9 @@ class BCTrainer(object):
                                                                                                             keepdim=True)
                     bc_loss = - log_prob_e.mean()
                     if self._wandb:
-                        wandb.log({f'train_actor/bc_loss_{hlc}': bc_loss.item()})
+                        wandb.log({f'train_actor/bc_loss_{hlc}': bc_loss.item(),
+                                   f'steps_{hlc}': steps[hlc]})
+                    steps[hlc] += 1
 
                     self._actor_optimizer.zero_grad()
                     bc_loss.backward()
@@ -154,9 +157,8 @@ if __name__ == '__main__':
     parser.add_argument('-ve', '--vehicles', default=100, type=int,
                         help="number of vehicles to spawn in the simulation")
     parser.add_argument('-wa', '--walkers', default=0, type=int, help="number of walkers to spawn in the simulation")
-    parser.add_argument('--skip-frames', default=50, type=int)
-    parser.add_argument('--noise', action="store_true")
-    parser.add_argument('--debug', action="store_true")
+    parser.add_argument('--eval-frequency', default=50, type=int)
+    parser.add_argument('--epochs', default=15, type=int)
 
     args = parser.parse_args()
 
@@ -190,5 +192,6 @@ if __name__ == '__main__':
     })
     actor = DiagGaussianActor(input_size=15, hidden_dim=64, action_dim=3, log_std_bounds=(-2, 5))
     dataset = AffordancesDataset(args.data)
-    trainer = BCTrainer(actor, dataset, env, use_wandb=False)
+    trainer = BCTrainer(actor, dataset, env, use_wandb=False,
+                        epochs=args.epochs, eval_frequency=args.eval_frequency)
     trainer.run()
