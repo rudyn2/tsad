@@ -170,7 +170,7 @@ if __name__ == '__main__':
         'host': args.host,
         'port': args.port,  # connection port
         'town': 'Town01',  # which town to simulate
-        'tm_port': 8050,
+        'tm_port': args.tm_port,
 
         # simulation parameters
         'verbose': False,
