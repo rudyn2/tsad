@@ -149,6 +149,7 @@ if __name__ == '__main__':
     parser.add_argument('--data', required=True, type=str, help='Path to data folder')
     parser.add_argument('-H', '--host', default='localhost', type=str, help='CARLA server ip address')
     parser.add_argument('-p', '--port', default=2000, type=int, help='CARLA server port number')
+    parser.add_argument('--tm-port', default=8000, type=int, help='Traffic manager port')
     parser.add_argument('-n', default=2, type=int, help='number of ego executions')
     parser.add_argument('-T', default=200, type=int,
                         help='number of frames to record per ego execution')
@@ -169,6 +170,7 @@ if __name__ == '__main__':
         'host': args.host,
         'port': args.port,  # connection port
         'town': 'Town01',  # which town to simulate
+        'tm_port': 8050,
 
         # simulation parameters
         'verbose': False,
@@ -191,5 +193,5 @@ if __name__ == '__main__':
     })
     actor = DiagGaussianActor(input_size=15, hidden_dim=64, action_dim=3, log_std_bounds=(-2, 5))
     dataset = AffordancesDataset(args.data)
-    trainer = BCTrainer(actor, dataset, env, use_wandb=True)
+    trainer = BCTrainer(actor, dataset, env, use_wandb=False)
     trainer.eval()

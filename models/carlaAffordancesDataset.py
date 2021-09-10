@@ -27,7 +27,7 @@ class AffordancesDataset(object):
 
         self._metadata_files = sorted(p.glob('**/**/*.json'))
         
-        for path in tqdm(self._metadata_files):
+        for path in tqdm(self._metadata_files, "Reading dataset..."):
             with open(path) as f:
                 metadata = json.load(f)
                 self._push_data(metadata, path)
