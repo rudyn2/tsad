@@ -8,20 +8,22 @@ USER root
 # RUN apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 3B4FE6ACC0B21F32
 # RUN apt-get update
 
-RUN mkdir /home/tsad
-WORKDIR /home/tsad
-COPY requirements.txt /home/tsad/requirements.txt
+# RUN mkdir /home/tsad
+# WORKDIR /home/tsad
+COPY requirements.txt requirements.txt
 RUN apt-get update
 RUN pip install -r requirements.txt
 RUN apt-get install ffmpeg libsm6 libxext6  -y
 RUN apt-get install libjpeg-turbo8 -y
 
+# Copy wheels and install
+COPY wheels/gym_carla-0.1.0-py3-none-any.whl gym_carla-0.1.0-py3-none-any.whl
+RUN pip install gym_carla-0.1.0-py3-none-any.whl
 
 # Copy code
-COPY . /home/tsad/
+WORKDIR /home/tsad
+COPY . .
 COPY carla_egg/carla-0.9.11-py3.7-linux-x86_64.egg /home/tsad/carla_egg/
-COPY wheels/gym_carla-0.1.0-py3-none-any.whl /home/tsad/gym_carla-0.1.0-py3-none-any.whl
-RUN pip install gym_carla-0.1.0-py3-none-any.whl
 
 #COPY scripts/ /home/tsad/scripts/
 #COPY models/ /home/tsad/models/

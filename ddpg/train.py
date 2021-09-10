@@ -2,20 +2,23 @@ from termcolor import colored
 import warnings
 import wandb
 import torch
-from gym_carla.envs.carla_env import CarlaEnv
-from models.ADEncoder import ADEncoder
-from models.TemporalEncoder import SequenceRNNEncoder
-from sac.agent.sac import SACAgent
-from sac.agent.actor import DiagGaussianActor
-from sac.agent.critic import DoubleQCritic
-from sac.trainer import SACTrainer
-from models.carla_wrapper import EncodeWrapper
-from sac.replay_buffer import MixedReplayBuffer
 import argparse
 import traceback
+import numpy as np
+
+from gym_carla.envs.carla_env import CarlaEnv
+from models.carla_wrapper import EncodeWrapper
+
+from ddpg.agent.ddpg import DDPG
+from ddpg.noise import OrnsteinUhlenbeckActionNoise, OUNoise, AdaptiveParamNoiseSpec
+from models.ActorCritic import Actor, Critic
+from ddpg.trainer import DDPGTrainer
+
+from sac.replay_buffer import MixedReplayBuffer
+
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="SAC Trainer",
+    parser = argparse.ArgumentParser(description="DDPG Trainer",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     # carla parameters
     carla_config = parser.add_argument_group('CARLA config')
@@ -24,13 +27,9 @@ if __name__ == '__main__':
     carla_config.add_argument('--vehicles', default=100, type=int, help='Number of vehicles in the simulation.')
     carla_config.add_argument('--walkers', default=50, type=int, help='Number of walkers in the simulation.')
 
-    # SAC wights
-    carla_config = parser.add_argument_group('SAC Weights')
-    carla_config.add_argument('--actor-weights', default='', type=str, help='Actor pretrained weights path.')
-    carla_config.add_argument('--critic-weights', default='', type=str, help='Critic pretrained weights path.')
-
-    # SAC parameters
+    # DDPG parameters
     rl_group = parser.add_argument_group('RL Config')
+    parser.add_argument("--noise_stddev", default=0.2, type=int, help="Standard deviation of the OU-Noise")
     rl_group.add_argument('--num-seed', default=2000, type=int, help='Number of seed steps before starting to train.')
     rl_group.add_argument('--control-frequency', default=4, type=int, help='Number of times that a control signal'
                                                                            'is going to be repeated to the environment')
@@ -38,7 +37,6 @@ if __name__ == '__main__':
     rl_group.add_argument('--num-eval-episodes', default=3, type=int, help='Number of evaluation episodes.')
     rl_group.add_argument('--num-train-steps', default=1e6, type=int, help='Number of training steps.')
     rl_group.add_argument('--eval-frequency', default=10, type=int, help='number of episodes between evaluations.')
-    rl_group.add_argument('--learn-temperature', action='store_true', help='Whether to lean alpha value or not.')
     rl_group.add_argument('--reward-scale', default=1, type=float, help='Reward scale factor (positive)')
     rl_group.add_argument('--speed-reward-weight', default=1, type=float, help='Speed reward weight.')
     rl_group.add_argument('--collision-reward-weight', default=1, type=float, help='Collision reward weight')
@@ -129,25 +127,26 @@ if __name__ == '__main__':
 
     # region: init agent
     print(colored("[*] Initializing actor critic models", "white"))
-    actor = DiagGaussianActor(action_dim=control_action_dim,
-                              hidden_dim=args.actor_hidden_dim,
-                              log_std_bounds=(-2, 5))
-    actor.load_state_dict(torch.load(args.actor_weights))
-    critic = DoubleQCritic(action_dim=input_action_dim,
-                           hidden_dim=args.critic_hidden_dim)
-    target_critic = DoubleQCritic(action_dim=input_action_dim,
-                                  hidden_dim=args.critic_hidden_dim)
-    target_critic.load_state_dict(torch.load(args.critic_weights))
-    agent = SACAgent(actor=actor,
-                     critic=critic,
-                     target_critic=target_critic,
-                     action_dim=control_action_dim,
-                     batch_size=args.batch_size,
-                     offline_proportion=args.bc_proportion,
-                     actor_weight_decay=args.actor_l2,
-                     critic_weight_decay=args.critic_l2,
-                     learnable_temperature=args.learn_temperature)
-    print(colored("[*] SAC Agent is ready!", "green"))
+    actor = Actor(hidden_size=args.actor_hidden_dim, output_factor=1)
+    target_actor = Actor(hidden_size=args.actor_hidden_dim, output_factor=1)
+    critic = Critic(hidden_dim=args.critic_hidden_dim, action_dim=input_action_dim)
+    target_critic = Critic(hidden_dim=args.critic_hidden_dim, action_dim=input_action_dim)
+
+    agent = DDPG(
+        actor=actor,
+        critic=critic,
+        target_actor=target_actor,
+        target_critic=target_critic,
+        device=device,
+        batch_size=args.batch_size,
+        offline_proportion=args.bc_proportion,
+        actor_weight_decay=args.actor_l2,
+        critic_weight_decay=args.critic_l2,
+        )
+    
+    ou_noise = OrnsteinUhlenbeckActionNoise(mu=np.zeros(control_action_dim),
+                                            sigma=float(args.noise_stddev) * np.ones(control_action_dim))
+    print(colored("[*] DDPG Agent is ready!", "green"))
     # endregion
 
     # region: init buffer
@@ -174,14 +173,14 @@ if __name__ == '__main__':
         "eval_frequency": args.eval_frequency,  # number of steps required for evaluation
         "num_seed_steps": args.num_seed  # number of steps before starting to update the models
     }
-    print(colored("Evaluating", "white"))
-    trainer = SACTrainer(env=carla_processed_env,
+    print(colored("Training", "white"))
+    trainer = DDPGTrainer(env=carla_processed_env,
                          agent=agent,
+                         noise=ou_noise,
                          buffer=mixed_replay_buffer,
-                         log_eval=True,
                          **train_params)
     try:
-        trainer.evaluate()
+        trainer.run()
     except Exception as e:
         print(colored("\nEarly stopping due to exception", "red"))
         traceback.print_exc()

@@ -24,13 +24,6 @@ if __name__ == '__main__':
     carla_config.add_argument('--vehicles', default=100, type=int, help='Number of vehicles in the simulation.')
     carla_config.add_argument('--walkers', default=50, type=int, help='Number of walkers in the simulation.')
 
-    # encoder weight's
-    encoders_group = parser.add_argument_group('Encoders config')
-    parser.add_argument('--vis-weights', default='../dataset/weights/best_model_1_validation_accuracy=-0.5557.pt',
-                        type=str, help="Path to visual encoder weight's")
-    parser.add_argument('--temp-weights', default='../dataset/weights/best_VanillaRNNEncoder(2).pth',
-                        help='Path to temporal encoder weights')
-
     # SAC parameters
     rl_group = parser.add_argument_group('RL Config')
     rl_group.add_argument('--num-seed', default=2000, type=int, help='Number of seed steps before starting to train.')
@@ -41,21 +34,20 @@ if __name__ == '__main__':
     rl_group.add_argument('--num-train-steps', default=1e6, type=int, help='Number of training steps.')
     rl_group.add_argument('--eval-frequency', default=10, type=int, help='number of episodes between evaluations.')
     rl_group.add_argument('--learn-temperature', action='store_true', help='Whether to lean alpha value or not.')
+    rl_group.add_argument('--reward-scale', default=1, type=float, help='Reward scale factor (positive)')
     rl_group.add_argument('--speed-reward-weight', default=1, type=float, help='Speed reward weight.')
     rl_group.add_argument('--collision-reward-weight', default=1, type=float, help='Collision reward weight')
     rl_group.add_argument('--lane-distance-reward-weight', default=1, type=float, help='Lane distance reward weight')
 
     models_parameters = parser.add_argument_group('Actor-Critic config')
-    models_parameters.add_argument('--actor-hidden-dim', type=int, default=512, help='Size of hidden layer in the '
+    models_parameters.add_argument('--actor-hidden-dim', type=int, default=128, help='Size of hidden layer in the '
                                                                                      'actor model.')
-    models_parameters.add_argument('--critic-hidden-dim', type=int, default=512, help='Size of hidden layer in the '
+    models_parameters.add_argument('--critic-hidden-dim', type=int, default=128, help='Size of hidden layer in the '
                                                                                       'critic model.')
+    models_parameters.add_argument('--actor-weights', type=str, default=None, help='Path to actor weights')
+    models_parameters.add_argument('--critic-weights', type=str, default=None, help='Path to critic weights')
 
     loss_parameters = parser.add_argument_group('Loss parameters')
-    loss_parameters.add_argument('--bc-factor', type=float, default=0.3,
-                                 help='Behavioral cloning loss component weight.')
-    loss_parameters.add_argument('--actor-factor', type=float, default=0.3,
-                                 help='Actor SAC loss component weight.')
     loss_parameters.add_argument('--actor-l2', type=float, default=4e-2,
                                  help='L2 regularization for the actor model.')
     loss_parameters.add_argument('--critic-l2', type=float, default=4e-2,
@@ -97,24 +89,6 @@ if __name__ == '__main__':
     # endregion
 
     # region: init env
-    print(colored("[*] Initializing models", "white"))
-    visual = ADEncoder(backbone='mobilenetv3_small_075')
-    visual.load_state_dict(torch.load(args.vis_weights))
-    visual.to(device)
-    visual.eval()
-    visual.freeze()
-
-    temp = SequenceRNNEncoder(num_layers=2,
-                              hidden_size=1024,
-                              action__chn=1024,
-                              speed_chn=1024,
-                              bidirectional=True)
-    temp.load_state_dict(torch.load(args.temp_weights))
-    temp.to(device)
-    temp.eval()
-    temp.freeze()
-    print(colored("[+] Encoder models were initialized and loaded successfully!", "green"))
-
     print(colored("[*] Initializing environment", "white"))
     env_params = {
         # carla connection parameters+
@@ -130,7 +104,7 @@ if __name__ == '__main__':
         'max_past_step': 1,  # the number of past steps to draw
         'dt': 1 / 30,  # time interval between two frames
         'reward_weights': reward_weights,  # reward weights [speed, collision, lane distance]
-        'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
+        'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration-throttle range
         'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
         'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
         'max_time_episode': args.max_episode_steps,  # maximum timesteps per episode
@@ -142,22 +116,33 @@ if __name__ == '__main__':
         'max_ego_spawn_times': 200,  # maximum times to spawn ego vehicle
     }
     carla_raw_env = CarlaEnv(env_params)
-    carla_processed_env = EncodeWrapper(carla_raw_env, visual, temp, max_steps=args.max_episode_steps,
+    carla_processed_env = EncodeWrapper(carla_raw_env, max_steps=args.max_episode_steps,
+                                        reward_scale=args.reward_scale,
                                         action_frequency=args.control_frequency, debug=args.debug)
     carla_processed_env.reset()
-    print(colored("[+] Environment ready!", "green"))
+    print(colored(f"[+] Environment ready (max_steps={args.max_episode_steps}, reward_scale={args.reward_scale},"
+                  f"action_frequency={args.control_frequency})!", "green"))
     # endregion
 
     # region: init agent
     print(colored("[*] Initializing actor critic models", "white"))
     actor = DiagGaussianActor(action_dim=control_action_dim,
                               hidden_dim=args.actor_hidden_dim,
-                              log_std_bounds=(-3, 3)
-                              )
+                              log_std_bounds=(-2, 5))
+    if args.actor_weights:
+        actor.load_state_dict(torch.load(args.actor_weights))
+
     critic = DoubleQCritic(action_dim=input_action_dim,
                            hidden_dim=args.critic_hidden_dim)
     target_critic = DoubleQCritic(action_dim=input_action_dim,
                                   hidden_dim=args.critic_hidden_dim)
+
+    if args.critic_weights:
+        critic.load_state_dict(torch.load(args.critic_weights))
+        target_critic.load_state_dict(torch.load(args.critic_weights))
+
+    actor.train()
+    critic.train()
     agent = SACAgent(actor=actor,
                      critic=critic,
                      target_critic=target_critic,
@@ -198,8 +183,7 @@ if __name__ == '__main__':
     trainer = SACTrainer(env=carla_processed_env,
                          agent=agent,
                          buffer=mixed_replay_buffer,
-                         **train_params
-                         )
+                         **train_params)
     try:
         trainer.run()
     except Exception as e:
