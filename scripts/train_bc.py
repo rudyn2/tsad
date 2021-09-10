@@ -159,6 +159,7 @@ if __name__ == '__main__':
     parser.add_argument('-wa', '--walkers', default=0, type=int, help="number of walkers to spawn in the simulation")
     parser.add_argument('--eval-frequency', default=50, type=int)
     parser.add_argument('--epochs', default=15, type=int)
+    parser.add_argument('--wandb', action='store_true')
 
     args = parser.parse_args()
 
@@ -192,6 +193,6 @@ if __name__ == '__main__':
     })
     actor = DiagGaussianActor(input_size=15, hidden_dim=64, action_dim=3, log_std_bounds=(-2, 5))
     dataset = AffordancesDataset(args.data)
-    trainer = BCTrainer(actor, dataset, env, use_wandb=False,
+    trainer = BCTrainer(actor, dataset, env, use_wandb=args.wandb,
                         epochs=args.epochs, eval_frequency=args.eval_frequency)
     trainer.run()
