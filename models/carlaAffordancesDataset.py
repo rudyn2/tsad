@@ -64,10 +64,11 @@ class AffordancesDataset(object):
         brake = self._data_cache[ep_key][t_key]['control']['brake']
         throttle = self._data_cache[ep_key][t_key]['control']['throttle']
         control = np.array([steer, throttle, brake])
-        
+        speed = self._data_cache[ep_key][t_key]['speed']
+
         command = self._data_cache[ep_key][t_key]['command']
 
-        return affordances, control, command
+        return affordances, control, speed, command
     
     def __len__(self):
         return sum([len(t_list) for t_list in self.timestamps_lists.values()])

@@ -34,7 +34,7 @@ def collate_fn(samples: list) -> (dict, dict):
     obs, act = [], []
     for t in samples:
         obs.append(dict(encoding=t[0]))
-        act.append(t[1])
+        act.append(t[2])    # t[2] = speed, t[1] = control
     return obs, act
 
 
@@ -191,7 +191,7 @@ if __name__ == '__main__':
         'speed_reduction_at_intersection': 0.75,
         'max_ego_spawn_times': 200,  # maximum times to spawn ego vehicle
     })
-    actor = DiagGaussianActor(input_size=15, hidden_dim=64, action_dim=3, log_std_bounds=(-2, 5))
+    actor = DiagGaussianActor(input_size=15, hidden_dim=64, action_dim=2, log_std_bounds=(-2, 5))
     dataset = AffordancesDataset(args.data)
     trainer = BCTrainer(actor, dataset, env, use_wandb=args.wandb,
                         epochs=args.epochs, eval_frequency=args.eval_frequency)
