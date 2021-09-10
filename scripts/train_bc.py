@@ -1,14 +1,15 @@
-import torch
-import wandb
-import sys
 import argparse
-from torch.utils.data import DataLoader
-import numpy as np
+import sys
 import time
 
-from sac.agent.actor import DiagGaussianActor
-from models.carlaAffordancesDataset import AffordancesDataset, HLCAffordanceDataset
+import numpy as np
+import torch
+import wandb
 from gym_carla.envs.carla_pid_env import CarlaPidEnv
+from torch.utils.data import DataLoader
+
+from models.carlaAffordancesDataset import AffordancesDataset, HLCAffordanceDataset
+from sac.agent.actor import DiagGaussianActor
 
 HLC_TO_NUMBER = {
     'RIGHT': 0,
@@ -35,7 +36,7 @@ def collate_fn(samples: list) -> (dict, dict):
     for t in samples:
         obs.append(dict(encoding=t[0]))
         # target_speed, steer
-        act.append(np.array([t[2], t[1][2]]))    # t[2] = speed, t[1] = control
+        act.append(np.array([t[2], t[1][2]]))  # t[2] = speed, t[1] = control
     return obs, act
 
 
@@ -52,6 +53,7 @@ class BCTrainer(object):
                  batch_size: int = 128,
                  epochs: int = 100,
                  eval_frequency: int = 10,
+                 open_loop_eval_frequency: int = 2,
                  eval_episodes: int = 3,
                  use_wandb: bool = False
                  ):
@@ -62,15 +64,21 @@ class BCTrainer(object):
         self._actor_optimizer = torch.optim.Adam(self._actor.parameters(), lr=lr)
         self._wandb = use_wandb
         self._eval_frequency = eval_frequency
+        self._open_loop_eval_frequency = open_loop_eval_frequency
         self._eval_episode = eval_episodes
 
         self._batch_size = batch_size
+        self._train_loaders = {hlc: DataLoader(HLCAffordanceDataset(self._dataset, hlc=hlc),
+                                               batch_size=self._batch_size, collate_fn=collate_fn,
+                                               shuffle=True) for hlc in range(4)}
+        self.mse = torch.nn.MSELoss()
         self._device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
         self._actor.to(self._device)
 
     def eval(self):
         print("\nEvaluating...")
+        self._actor.eval()
         total_reward = 0
         for e in range(self._eval_episode):
             obs = self._env.reset()
@@ -78,7 +86,7 @@ class BCTrainer(object):
             done = False
             while not done:
                 start = time.time()
-                dist = self._actor(dict(encoding=obs["affordances"]), hlc=int(obs["hlc"])-1)
+                dist = self._actor(dict(encoding=obs["affordances"]), hlc=int(obs["hlc"]) - 1)
                 action = dist.mean
                 action = action.clamp(-1, 1)
                 action = list(to_np(action[0]))
@@ -109,24 +117,44 @@ class BCTrainer(object):
         print(f"Avg reward: {avg_reward:.2f}")
         if self._wandb:
             wandb.log({"eval_actor/eval_reward": avg_reward})
+        self._actor.train()
+
+    def open_loop_eval(self):
+        """
+        Performs open-loop evaluation in the given dataset.
+        """
+        self._actor.eval()
+        print("\n" + "-"*50)
+        print("Open loop evaluation:")
+        for hlc in range(4):
+            hlc_loader = self._train_loaders[hlc]
+            hlc_loss = 0
+            for i, (obs, act) in enumerate(hlc_loader):
+                act_expert = torch.tensor(np.stack(act), device=self._device).float()
+                dist = self._actor(obs, hlc=hlc)
+                act_pred = dist.mean
+                hlc_loss += self.mse(act_pred, act_expert)
+            hlc_loss /= len(hlc_loader)
+            print(f"HLC {hlc} MSE Loss: {hlc_loss}")
+            if self._wandb:
+                wandb.log({f"open_loop_eval/mse_{hlc}": hlc_loss})
+        print("-" * 50)
+        self._actor.train()
 
     def run(self):
         if self._wandb:
             wandb.init(project='tsad', entity='autonomous-driving')
 
-        train_loaders = {hlc: DataLoader(HLCAffordanceDataset(self._dataset, hlc=hlc),
-                                         batch_size=self._batch_size, collate_fn=collate_fn,
-                                         shuffle=True) for hlc in range(4)}
         steps = {0: 0, 1: 0, 2: 0, 3: 0}
         for e in range(1, self._epochs + 1):
             for hlc in range(4):
-                hlc_loader = train_loaders[hlc]
+                hlc_loader = self._train_loaders[hlc]
 
                 for i, (obs, act) in enumerate(hlc_loader):
 
-                    dist_e = self._actor(obs, hlc=hlc)
+                    dist = self._actor(obs, hlc=hlc)
                     act_e_hlc = torch.tensor(np.stack(act), device=self._device).float()
-                    log_prob_e = dist_e.log_prob(torch.clamp(act_e_hlc, min=-1 + 1e-6, max=1.0 - 1e-6)).sum(-1,
+                    log_prob_e = dist.log_prob(torch.clamp(act_e_hlc, min=-1 + 1e-6, max=1.0 - 1e-6)).sum(-1,
                                                                                                             keepdim=True)
                     bc_loss = - log_prob_e.mean()
                     if self._wandb:
@@ -144,6 +172,8 @@ class BCTrainer(object):
 
             if e % self._eval_frequency == 0:
                 self.eval()
+            if e % self._open_loop_eval_frequency == 0:
+                self.open_loop_eval()
 
 
 if __name__ == '__main__':
