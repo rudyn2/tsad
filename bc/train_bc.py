@@ -144,7 +144,6 @@ class BCTrainer(object):
                 hlc_loader = self._train_loaders[hlc]
 
                 for i, (obs, act) in enumerate(hlc_loader):
-
                     bc_loss = self._actor.update(obs, act, hlc)
 
                     if self._wandb:
@@ -183,32 +182,32 @@ if __name__ == '__main__':
     if args.wandb:
         wandb.init(project='tsad', entity='autonomous-driving', name='bc-train')
 
-    # env = CarlaPidEnv({
-    #     # carla connection parameters+
-    #     'host': args.host,
-    #     'port': args.port,  # connection port
-    #     'town': 'Town01',  # which town to simulate
-    #     'traffic_manager_port': args.tm_port,
-    #
-    #     # simulation parameters
-    #     'verbose': False,
-    #     'vehicles': args.vehicles,  # number of vehicles in the simulation
-    #     'walkers': args.walkers,  # number of walkers in the simulation
-    #     'obs_size': 224,  # sensor width and height
-    #     'max_past_step': 1,  # the number of past steps to draw
-    #     'dt': 0.025,  # time interval between two frames
-    #     'reward_weights': [0.3, 0.3, 0.3],
-    #     'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
-    #     'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
-    #     'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
-    #     'max_time_episode': 1000,  # maximum timesteps per episode
-    #     'max_waypt': 12,  # maximum number of waypoints
-    #     'd_behind': 12,  # distance behind the ego vehicle (meter)
-    #     'out_lane_thres': 2.0,  # threshold for out of lane
-    #     'desired_speed': 6,  # desired speed (m/s)
-    #     'speed_reduction_at_intersection': 0.75,
-    #     'max_ego_spawn_times': 200,  # maximum times to spawn ego vehicle
-    # })
+    env = CarlaPidEnv({
+        # carla connection parameters+
+        'host': args.host,
+        'port': args.port,  # connection port
+        'town': 'Town01',  # which town to simulate
+        'traffic_manager_port': args.tm_port,
+    
+        # simulation parameters
+        'verbose': False,
+        'vehicles': args.vehicles,  # number of vehicles in the simulation
+        'walkers': args.walkers,  # number of walkers in the simulation
+        'obs_size': 224,  # sensor width and height
+        'max_past_step': 1,  # the number of past steps to draw
+        'dt': 0.025,  # time interval between two frames
+        'reward_weights': [0.3, 0.3, 0.3],
+        'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
+        'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
+        'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
+        'max_time_episode': 1000,  # maximum timesteps per episode
+        'max_waypt': 12,  # maximum number of waypoints
+        'd_behind': 12,  # distance behind the ego vehicle (meter)
+        'out_lane_thres': 2.0,  # threshold for out of lane
+        'desired_speed': 6,  # desired speed (m/s)
+        'speed_reduction_at_intersection': 0.75,
+        'max_ego_spawn_times': 200,  # maximum times to spawn ego vehicle
+    })
 
     agent = BCStochasticAgent(input_size=15, hidden_dim=1024, action_dim=2, log_std_bounds=(-2, 5))
     dataset = AffordancesDataset(args.data)
