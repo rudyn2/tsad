@@ -211,7 +211,7 @@ if __name__ == '__main__':
 
     agent = BCStochasticAgent(input_size=15, hidden_dim=1024, action_dim=2, log_std_bounds=(-2, 5))
     dataset = AffordancesDataset(args.data)
-    trainer = BCTrainer(agent, dataset, None,
+    trainer = BCTrainer(agent, dataset, env,
                         use_wandb=args.wandb,
                         epochs=args.epochs,
                         eval_frequency=args.eval_frequency,
