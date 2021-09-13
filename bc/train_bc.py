@@ -210,7 +210,7 @@ if __name__ == '__main__':
     #     'max_ego_spawn_times': 200,  # maximum times to spawn ego vehicle
     # })
 
-    agent = BCDeterministicAgent(input_size=15, hidden_dim=1024, action_dim=2, log_std_bounds=(-2, 5))
+    agent = BCStochasticAgent(input_size=15, hidden_dim=1024, action_dim=2, log_std_bounds=(-2, 5))
     dataset = AffordancesDataset(args.data)
     trainer = BCTrainer(agent, dataset, None,
                         use_wandb=args.wandb,

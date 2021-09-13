@@ -8,6 +8,7 @@ from torch.optim.adam import Adam
 
 from sac.agent.actor import DiagGaussianActor
 from models.ActorCritic import Actor
+from squashed_gaussian import SquashedGaussianMLPActor
 
 
 def to_np(t):
@@ -57,38 +58,35 @@ class MultiTaskAgent:
 class BCStochasticAgent(MultiTaskAgent):
 
     def __init__(self, **kwargs):
-        self._actor = DiagGaussianActor(**kwargs)
+        self._actor = nn.ModuleDict({
+            str(hlc): SquashedGaussianMLPActor(
+                kwargs["input_size"],
+                kwargs["action_dim"],
+                (kwargs["hidden_dim"], kwargs["hidden_dim"]),
+                nn.ReLU
+            ) for hlc in range(4)
+        })
         self._actor_optimizer = Adam(self._actor.parameters(), lr=0.0001)
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         self._actor.to(self._device)
 
     def act_batch(self, obs: list, task: int) -> torch.Tensor:
         with torch.no_grad():
-            dist = self._actor(obs, hlc=task)
-            action = dist.mean
-            action = action.clamp(-1, 1)
+            encoding = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0).float()
+            action, _ = self._actor[str(task)](encoding, deterministic=True, with_logprob=False)
             return action
 
     def act_single(self, obs: dict, task: int) -> list:
-        with torch.no_grad():
-            dist = self._actor(obs, hlc=task)
-            action = dist.mean
-            action = action.clamp(-1, 1)
-            action = list(to_np(action[0]))
-            return action
+        raise NotImplementedError
 
     def update(self, obs: list, act: list, task: int) -> float:
-        dist = self._actor(obs, hlc=task)
-        act_e_hlc = torch.tensor(np.stack(act), device=self._device).float()
-        log_prob_e = dist.log_prob(torch.clamp(act_e_hlc, min=-1 + 1e-6, max=1.0 - 1e-6)).sum(-1,
-                                                                                              keepdim=True)
-        bc_loss = - log_prob_e.mean()
-
+        encoding = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0).float()
+        _, logprob = self._actor[str(task)](encoding)
+        loss = logprob.mean()
         self._actor_optimizer.zero_grad()
-        bc_loss.backward()
+        loss.backward()
         self._actor_optimizer.step()
-
-        return bc_loss.item()
+        return loss.item()
 
     def train_mode(self):
         self._actor.train()
@@ -102,7 +100,7 @@ class BCDeterministicAgent(MultiTaskAgent):
         self._actor = Actor(kwargs["input_size"], kwargs["hidden_dim"], kwargs["action_dim"], output_factor=1)
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         self._actor.to(self._device)
-        self._actor_optimizer = Adam(self._actor.parameters(), lr=0.0001)
+        self._actor_optimizer = Adam(self._actor.parameters(), lr=0.00001)
         self._actor_loss = nn.MSELoss()
 
     def act_batch(self, obs: list, task: int) -> Union[list, torch.Tensor]:
