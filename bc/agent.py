@@ -73,7 +73,7 @@ class BCStochasticAgent(MultiTaskAgent):
     def act_batch(self, obs: list, task: int) -> torch.Tensor:
         with torch.no_grad():
             encoding = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0).float()
-            action, _ = self._actor[str(task)](encoding, deterministic=True, with_logprob=False)
+            action = self._actor[str(task)](encoding, deterministic=True)
             return action
 
     def act_single(self, obs: dict, task: int) -> list:
@@ -81,7 +81,9 @@ class BCStochasticAgent(MultiTaskAgent):
 
     def update(self, obs: list, act: list, task: int) -> float:
         encoding = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0).float()
-        _, logprob = self._actor[str(task)](encoding)
+        act = torch.tensor(act, device=self._device).float()
+        act = torch.clamp(act, min=-1 + 1e-6, max=1.0 - 1e-6)
+        logprob = self._actor[str(task)].logp_pi(encoding, act)
         loss = logprob.mean()
         self._actor_optimizer.zero_grad()
         loss.backward()
