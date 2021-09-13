@@ -9,7 +9,7 @@ from gym_carla.envs.carla_pid_env import CarlaPidEnv
 from torch.utils.data import DataLoader
 
 from models.carlaAffordancesDataset import AffordancesDataset, HLCAffordanceDataset
-from sac.agent.actor import DiagGaussianActor
+from agent import BCStochasticAgent, MultiTaskAgent, BCDeterministicAgent
 
 HLC_TO_NUMBER = {
     'RIGHT': 0,
@@ -46,10 +46,9 @@ class BCTrainer(object):
     """
 
     def __init__(self,
-                 actor: DiagGaussianActor,
+                 actor: MultiTaskAgent,
                  dataset: AffordancesDataset,
                  env: CarlaPidEnv,
-                 lr: float = 0.0001,
                  batch_size: int = 128,
                  epochs: int = 100,
                  eval_frequency: int = 10,
@@ -61,35 +60,30 @@ class BCTrainer(object):
         self._dataset = dataset
         self._epochs = epochs
         self._env = env
-        self._actor_optimizer = torch.optim.Adam(self._actor.parameters(), lr=lr)
         self._wandb = use_wandb
         self._eval_frequency = eval_frequency
         self._open_loop_eval_frequency = open_loop_eval_frequency
         self._eval_episode = eval_episodes
 
         self._batch_size = batch_size
+        self.__hlc_to_train = [3]
         self._train_loaders = {hlc: DataLoader(HLCAffordanceDataset(self._dataset, hlc=hlc),
                                                batch_size=self._batch_size, collate_fn=collate_fn,
-                                               shuffle=True) for hlc in range(4)}
+                                               shuffle=True) for hlc in self.__hlc_to_train}
         self.mse = torch.nn.MSELoss()
         self._device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-        self._actor.to(self._device)
-
     def eval(self):
         print("\nEvaluating...")
-        self._actor.eval()
         total_reward = 0
+        self._actor.eval_mode()
         for e in range(self._eval_episode):
             obs = self._env.reset()
             episode_reward = 0
             done = False
             while not done:
                 start = time.time()
-                dist = self._actor(dict(encoding=obs["affordances"]), hlc=int(obs["hlc"]) - 1)
-                action = dist.mean
-                action = action.clamp(-1, 1)
-                action = list(to_np(action[0]))
+                action = self._actor.act_single(obs, task=obs["hlc"]-1)
                 speed = np.linalg.norm(obs["speed"])
                 obs, rew, done, _ = self._env.step(action=action)
                 episode_reward += rew
@@ -117,29 +111,28 @@ class BCTrainer(object):
         print(f"Avg reward: {avg_reward:.2f}")
         if self._wandb:
             wandb.log({"eval_actor/eval_reward": avg_reward})
-        self._actor.train()
+        self._actor.train_mode()
 
     def open_loop_eval(self):
         """
         Performs open-loop evaluation in the given dataset.
         """
-        self._actor.eval()
+        self._actor.eval_mode()
         print("\n" + "-"*50)
         print("Open loop evaluation:")
-        for hlc in range(4):
+        for hlc in self.__hlc_to_train:
             hlc_loader = self._train_loaders[hlc]
             hlc_loss = 0
             for i, (obs, act) in enumerate(hlc_loader):
                 act_expert = torch.tensor(np.stack(act), device=self._device).float()
-                dist = self._actor(obs, hlc=hlc)
-                act_pred = dist.mean
+                act_pred = self._actor.act_batch(obs, hlc)
                 hlc_loss += self.mse(act_pred, act_expert)
             hlc_loss /= len(hlc_loader)
             print(f"HLC {hlc} MSE Loss: {hlc_loss}")
             if self._wandb:
                 wandb.log({f"open_loop_eval/mse_{hlc}": hlc_loss})
         print("-" * 50)
-        self._actor.train()
+        self._actor.train_mode()
 
     def run(self):
         if self._wandb:
@@ -147,27 +140,20 @@ class BCTrainer(object):
 
         steps = {0: 0, 1: 0, 2: 0, 3: 0}
         for e in range(1, self._epochs + 1):
-            for hlc in range(4):
+            for hlc in self.__hlc_to_train:
                 hlc_loader = self._train_loaders[hlc]
 
                 for i, (obs, act) in enumerate(hlc_loader):
 
-                    dist = self._actor(obs, hlc=hlc)
-                    act_e_hlc = torch.tensor(np.stack(act), device=self._device).float()
-                    log_prob_e = dist.log_prob(torch.clamp(act_e_hlc, min=-1 + 1e-6, max=1.0 - 1e-6)).sum(-1,
-                                                                                                            keepdim=True)
-                    bc_loss = - log_prob_e.mean()
+                    bc_loss = self._actor.update(obs, act, hlc)
+
                     if self._wandb:
-                        wandb.log({f'train_actor/bc_loss_{hlc}': bc_loss.item(),
+                        wandb.log({f'train_actor/bc_loss_{hlc}': bc_loss,
                                    f'steps_{hlc}': steps[hlc]})
                     steps[hlc] += 1
 
-                    self._actor_optimizer.zero_grad()
-                    bc_loss.backward()
-                    self._actor_optimizer.step()
-
                     sys.stdout.write("\r")
-                    sys.stdout.write(f"Epoch={e}(hlc={hlc}) [{i}/{len(hlc_loader)}] bc_loss={bc_loss.item():.2f}")
+                    sys.stdout.write(f"Epoch={e}(hlc={hlc}) [{i}/{len(hlc_loader)}] bc_loss={bc_loss:.2f}")
                     sys.stdout.flush()
 
             if e % self._eval_frequency == 0:
@@ -188,41 +174,47 @@ if __name__ == '__main__':
                         help="number of vehicles to spawn in the simulation")
     parser.add_argument('-wa', '--walkers', default=0, type=int, help="number of walkers to spawn in the simulation")
     parser.add_argument('--eval-frequency', default=50, type=int)
+    parser.add_argument('--open-loop-eval-frequency', default=20, type=int)
     parser.add_argument('--epochs', default=15, type=int)
     parser.add_argument('--wandb', action='store_true')
 
     args = parser.parse_args()
 
-    wandb.init(project='tsad', entity='autonomous-driving', name='bc-train')
+    if args.wandb:
+        wandb.init(project='tsad', entity='autonomous-driving', name='bc-train')
 
-    env = CarlaPidEnv({
-        # carla connection parameters+
-        'host': args.host,
-        'port': args.port,  # connection port
-        'town': 'Town01',  # which town to simulate
-        'traffic_manager_port': args.tm_port,
+    # env = CarlaPidEnv({
+    #     # carla connection parameters+
+    #     'host': args.host,
+    #     'port': args.port,  # connection port
+    #     'town': 'Town01',  # which town to simulate
+    #     'traffic_manager_port': args.tm_port,
+    #
+    #     # simulation parameters
+    #     'verbose': False,
+    #     'vehicles': args.vehicles,  # number of vehicles in the simulation
+    #     'walkers': args.walkers,  # number of walkers in the simulation
+    #     'obs_size': 224,  # sensor width and height
+    #     'max_past_step': 1,  # the number of past steps to draw
+    #     'dt': 0.025,  # time interval between two frames
+    #     'reward_weights': [0.3, 0.3, 0.3],
+    #     'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
+    #     'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
+    #     'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
+    #     'max_time_episode': 1000,  # maximum timesteps per episode
+    #     'max_waypt': 12,  # maximum number of waypoints
+    #     'd_behind': 12,  # distance behind the ego vehicle (meter)
+    #     'out_lane_thres': 2.0,  # threshold for out of lane
+    #     'desired_speed': 6,  # desired speed (m/s)
+    #     'speed_reduction_at_intersection': 0.75,
+    #     'max_ego_spawn_times': 200,  # maximum times to spawn ego vehicle
+    # })
 
-        # simulation parameters
-        'verbose': False,
-        'vehicles': args.vehicles,  # number of vehicles in the simulation
-        'walkers': args.walkers,  # number of walkers in the simulation
-        'obs_size': 224,  # sensor width and height
-        'max_past_step': 1,  # the number of past steps to draw
-        'dt': 0.025,  # time interval between two frames
-        'reward_weights': [0.3, 0.3, 0.3],
-        'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
-        'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
-        'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
-        'max_time_episode': 1000,  # maximum timesteps per episode
-        'max_waypt': 12,  # maximum number of waypoints
-        'd_behind': 12,  # distance behind the ego vehicle (meter)
-        'out_lane_thres': 2.0,  # threshold for out of lane
-        'desired_speed': 6,  # desired speed (m/s)
-        'speed_reduction_at_intersection': 0.75,
-        'max_ego_spawn_times': 200,  # maximum times to spawn ego vehicle
-    })
-    actor = DiagGaussianActor(input_size=15, hidden_dim=64, action_dim=2, log_std_bounds=(-2, 5))
+    agent = BCDeterministicAgent(input_size=15, hidden_dim=1024, action_dim=2, log_std_bounds=(-2, 5))
     dataset = AffordancesDataset(args.data)
-    trainer = BCTrainer(actor, dataset, env, use_wandb=args.wandb,
-                        epochs=args.epochs, eval_frequency=args.eval_frequency)
+    trainer = BCTrainer(agent, dataset, None,
+                        use_wandb=args.wandb,
+                        epochs=args.epochs,
+                        eval_frequency=args.eval_frequency,
+                        open_loop_eval_frequency=args.open_loop_eval_frequency)
     trainer.run()
