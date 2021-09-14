@@ -67,7 +67,9 @@ class BCTrainer(object):
 
         self._batch_size = batch_size
         self.__hlc_to_train = [3]
-        self._train_loaders = {hlc: DataLoader(HLCAffordanceDataset(self._dataset, hlc=hlc),
+
+        if dataset:
+            self._train_loaders = {hlc: DataLoader(HLCAffordanceDataset(self._dataset, hlc=hlc),
                                                batch_size=self._batch_size, collate_fn=collate_fn,
                                                shuffle=True) for hlc in self.__hlc_to_train}
         self.mse = torch.nn.MSELoss()
@@ -152,11 +154,12 @@ class BCTrainer(object):
                     steps[hlc] += 1
 
                     sys.stdout.write("\r")
-                    sys.stdout.write(f"Epoch={e}(hlc={hlc}) [{i}/{len(hlc_loader)}] bc_loss={bc_loss:.2f}")
+                    sys.stdout.write(f"Epoch={e.zfill(3)}(hlc={hlc}) [{i.zfill(4)}/{len(hlc_loader)}] bc_loss={bc_loss:.5f}")
                     sys.stdout.flush()
 
             if e % self._eval_frequency == 0:
                 self.eval()
+                self._actor.save()
             if e % self._open_loop_eval_frequency == 0:
                 self.open_loop_eval()
 
@@ -176,6 +179,7 @@ if __name__ == '__main__':
     parser.add_argument('--open-loop-eval-frequency', default=20, type=int)
     parser.add_argument('--epochs', default=15, type=int)
     parser.add_argument('--wandb', action='store_true')
+    parser.add_argument('--checkpoint', default='checkpoint.pt', type=str)
 
     args = parser.parse_args()
 
@@ -209,7 +213,7 @@ if __name__ == '__main__':
         'max_ego_spawn_times': 200,  # maximum times to spawn ego vehicle
     })
 
-    agent = BCStochasticAgent(input_size=15, hidden_dim=1024, action_dim=2, log_std_bounds=(-2, 5))
+    agent = BCStochasticAgent(input_size=15, hidden_dim=1024, action_dim=2, log_std_bounds=(-2, 5), checkpoint=args.checkpoint)
     dataset = AffordancesDataset(args.data)
     trainer = BCTrainer(agent, dataset, env,
                         use_wandb=args.wandb,

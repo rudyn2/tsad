@@ -53,6 +53,14 @@ class MultiTaskAgent:
     @abstractmethod
     def eval_mode(self):
         raise NotImplementedError
+    
+    @abstractmethod
+    def save(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def load(self):
+        raise NotImplementedError
 
 
 class BCStochasticAgent(MultiTaskAgent):
@@ -70,6 +78,7 @@ class BCStochasticAgent(MultiTaskAgent):
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         self._actor.to(self._device)
         self._mse = nn.MSELoss()
+        self._checkpoint = kwargs['checkpoint']
 
     def act_batch(self, obs: list, task: int) -> torch.Tensor:
         with torch.no_grad():
@@ -100,6 +109,12 @@ class BCStochasticAgent(MultiTaskAgent):
 
     def eval_mode(self):
         self._actor.eval()
+    
+    def save(self):
+        torch.save(self._actor, self._checkpoint)
+    
+    def load(self):
+        self._actor = torch.load(self._checkpoint)
 
 
 class BCDeterministicAgent(MultiTaskAgent):
