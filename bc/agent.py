@@ -69,6 +69,7 @@ class BCStochasticAgent(MultiTaskAgent):
         self._actor_optimizer = Adam(self._actor.parameters(), lr=0.0001)
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
         self._actor.to(self._device)
+        self._mse = nn.MSELoss()
 
     def act_batch(self, obs: list, task: int) -> torch.Tensor:
         with torch.no_grad():
@@ -81,15 +82,14 @@ class BCStochasticAgent(MultiTaskAgent):
         # task = 3
         encodings = torch.tensor(obs['affordances'], device=self._device).unsqueeze(0).float()
         with torch.no_grad():
-            action = self._actor[str(task)](encodings, deterministic=True) # (1, 2)
-        return list(action.squeeze(dim=0).cpu().numpy()) #[(1, 2)]
+            action = self._actor[str(task)](encodings, deterministic=True)  # (1, 2)
+        return list(action.squeeze(dim=0).cpu().numpy())                    # [target_speed, steer]
 
     def update(self, obs: list, act: list, task: int) -> float:
         encoding = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0).float()
         act = torch.tensor(act, device=self._device).float()
-        # act = torch.clamp(act, min=-1 + 1e-6, max=1.0 - 1e-6)
-        logprob = self._actor[str(task)].logp_pi(encoding, act)
-        loss = -logprob.mean()
+        pred_act, _ = self._actor[str(task)].get_distribution(encoding)
+        loss = self._mse(pred_act, act)
         self._actor_optimizer.zero_grad()
         loss.backward()
         self._actor_optimizer.step()

@@ -25,12 +25,16 @@ class SquashedGaussianMLPActor(nn.Module):
         self.log_std_layer = nn.Linear(hidden_sizes[-1], act_dim)
         self.act_limit = act_limit
 
-    def forward(self, obs, deterministic=False):
+    def get_distribution(self, obs):
         net_out = self.net(obs)
         mu = self.mu_layer(net_out)
         log_std = self.log_std_layer(net_out)
         log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
         std = torch.exp(log_std)
+        return mu, std
+
+    def forward(self, obs, deterministic=False):
+        mu, std = self.get_distribution(obs)
 
         # Pre-squash distribution and sample
         pi_distribution = Normal(mu, std)
@@ -46,11 +50,7 @@ class SquashedGaussianMLPActor(nn.Module):
         return pi_action
 
     def logp_pi(self, obs, act):
-        net_out = self.net(obs)
-        mu = self.mu_layer(net_out)
-        log_std = self.log_std_layer(net_out)
-        log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
-        std = torch.exp(log_std)
+        mu, std = self.get_distribution(obs)
 
         # Pre-squash distribution and sample
         pi_distribution = Normal(mu, std)
