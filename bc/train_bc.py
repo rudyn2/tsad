@@ -18,6 +18,13 @@ HLC_TO_NUMBER = {
     'LANEFOLLOW': 3
 }
 
+def get_number_order(num):
+    order = 0
+    while num != 0:
+        num = num // 10
+        order += 1
+    return order
+
 
 def to_np(t):
     if t is None:
@@ -92,7 +99,7 @@ class BCTrainer(object):
 
                 fps = 1 / (time.time() - start)
                 sys.stdout.write("\r")
-                sys.stdout.write(f"fps={fps:.2f} speed={speed:.2f} rew={rew}")
+                sys.stdout.write(f"fps={fps:.2f} speed={speed:.2f} rew={rew:.2f}")
                 sys.stdout.flush()
 
                 if self._wandb:
@@ -154,7 +161,8 @@ class BCTrainer(object):
                     steps[hlc] += 1
 
                     sys.stdout.write("\r")
-                    sys.stdout.write(f"Epoch={e.zfill(3)}(hlc={hlc}) [{i.zfill(4)}/{len(hlc_loader)}] bc_loss={bc_loss:.5f}")
+                    sys.stdout.write(
+                        f"Epoch={e.zfill(get_number_order(self._epochs))}(hlc={hlc}) [{i.zfill(get_number_order(len(hlc_loader)))}/{len(hlc_loader)}] bc_loss={bc_loss:.5f}")
                     sys.stdout.flush()
 
             if e % self._eval_frequency == 0:
