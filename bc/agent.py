@@ -83,7 +83,7 @@ class BCStochasticAgent(MultiTaskAgent):
     def act_batch(self, obs: list, task: int) -> torch.Tensor:
         with torch.no_grad():
             encoding = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0).float()
-            action = self._actor[str(task)](encoding, deterministic=True)
+            action, _ = self._actor[str(task)].get_distribution(encoding)
             return action
 
     def act_single(self, obs: dict, task: int) -> list:
@@ -91,7 +91,7 @@ class BCStochasticAgent(MultiTaskAgent):
         # task = 3
         encodings = torch.tensor(obs['affordances'], device=self._device).unsqueeze(0).float()
         with torch.no_grad():
-            action = self._actor[str(task)](encodings, deterministic=True)  # (1, 2)
+            action, _ = self._actor[str(task)].get_distribution(encodings)  # (1, 2)
         return list(action.squeeze(dim=0).cpu().numpy())                    # [target_speed, steer]
 
     def update(self, obs: list, act: list, task: int) -> float:

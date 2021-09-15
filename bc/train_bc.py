@@ -8,8 +8,8 @@ import wandb
 from gym_carla.envs.carla_pid_env import CarlaPidEnv
 from torch.utils.data import DataLoader
 
+from agent import BCStochasticAgent, MultiTaskAgent
 from models.carlaAffordancesDataset import AffordancesDataset, HLCAffordanceDataset
-from agent import BCStochasticAgent, MultiTaskAgent, BCDeterministicAgent
 
 HLC_TO_NUMBER = {
     'RIGHT': 0,
@@ -17,6 +17,7 @@ HLC_TO_NUMBER = {
     'STRAIGHT': 2,
     'LANEFOLLOW': 3
 }
+
 
 def get_number_order(num):
     order = 0
@@ -77,8 +78,8 @@ class BCTrainer(object):
 
         if dataset:
             self._train_loaders = {hlc: DataLoader(HLCAffordanceDataset(self._dataset, hlc=hlc),
-                                               batch_size=self._batch_size, collate_fn=collate_fn,
-                                               shuffle=True) for hlc in self.__hlc_to_train}
+                                                   batch_size=self._batch_size, collate_fn=collate_fn,
+                                                   shuffle=True) for hlc in self.__hlc_to_train}
         self.mse = torch.nn.MSELoss()
         self._device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -92,7 +93,7 @@ class BCTrainer(object):
             done = False
             while not done:
                 start = time.time()
-                action = self._actor.act_single(obs, task=obs["hlc"]-1)
+                action = self._actor.act_single(obs, task=obs["hlc"] - 1)
                 speed = np.linalg.norm(obs["speed"])
                 obs, rew, done, _ = self._env.step(action=action)
                 episode_reward += rew
@@ -127,7 +128,7 @@ class BCTrainer(object):
         Performs open-loop evaluation in the given dataset.
         """
         self._actor.eval_mode()
-        print("\n" + "-"*50)
+        print("\n" + "-" * 50)
         print("Open loop evaluation:")
         for hlc in self.__hlc_to_train:
             hlc_loader = self._train_loaders[hlc]
@@ -162,7 +163,8 @@ class BCTrainer(object):
 
                     sys.stdout.write("\r")
                     sys.stdout.write(
-                        f"Epoch={e.zfill(get_number_order(self._epochs))}(hlc={hlc}) [{i.zfill(get_number_order(len(hlc_loader)))}/{len(hlc_loader)}] bc_loss={bc_loss:.5f}")
+                        f"Epoch={str(e).zfill(get_number_order(self._epochs))}(hlc={hlc}) "
+                        f"{str(i).zfill(get_number_order(len(hlc_loader)))}/{len(hlc_loader)}] bc_loss={bc_loss:.5f}")
                     sys.stdout.flush()
 
             if e % self._eval_frequency == 0:
@@ -194,36 +196,37 @@ if __name__ == '__main__':
     if args.wandb:
         wandb.init(project='tsad', entity='autonomous-driving', name='bc-train')
 
-    env = CarlaPidEnv({
-        # carla connection parameters+
-        'host': args.host,
-        'port': args.port,  # connection port
-        'town': 'Town01',  # which town to simulate
-        'traffic_manager_port': args.tm_port,
-    
-        # simulation parameters
-        'verbose': False,
-        'vehicles': args.vehicles,  # number of vehicles in the simulation
-        'walkers': args.walkers,  # number of walkers in the simulation
-        'obs_size': 224,  # sensor width and height
-        'max_past_step': 1,  # the number of past steps to draw
-        'dt': 0.025,  # time interval between two frames
-        'reward_weights': [0.3, 0.3, 0.3],
-        'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
-        'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
-        'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
-        'max_time_episode': 1000,  # maximum timesteps per episode
-        'max_waypt': 12,  # maximum number of waypoints
-        'd_behind': 12,  # distance behind the ego vehicle (meter)
-        'out_lane_thres': 2.0,  # threshold for out of lane
-        'desired_speed': 6,  # desired speed (m/s)
-        'speed_reduction_at_intersection': 0.75,
-        'max_ego_spawn_times': 200,  # maximum times to spawn ego vehicle
-    })
+    # env = CarlaPidEnv({
+    #     # carla connection parameters+
+    #     'host': args.host,
+    #     'port': args.port,  # connection port
+    #     'town': 'Town01',  # which town to simulate
+    #     'traffic_manager_port': args.tm_port,
+    #
+    #     # simulation parameters
+    #     'verbose': False,
+    #     'vehicles': args.vehicles,  # number of vehicles in the simulation
+    #     'walkers': args.walkers,  # number of walkers in the simulation
+    #     'obs_size': 224,  # sensor width and height
+    #     'max_past_step': 1,  # the number of past steps to draw
+    #     'dt': 0.025,  # time interval between two frames
+    #     'reward_weights': [0.3, 0.3, 0.3],
+    #     'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
+    #     'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
+    #     'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
+    #     'max_time_episode': 1000,  # maximum timesteps per episode
+    #     'max_waypt': 12,  # maximum number of waypoints
+    #     'd_behind': 12,  # distance behind the ego vehicle (meter)
+    #     'out_lane_thres': 2.0,  # threshold for out of lane
+    #     'desired_speed': 6,  # desired speed (m/s)
+    #     'speed_reduction_at_intersection': 0.75,
+    #     'max_ego_spawn_times': 200,  # maximum times to spawn ego vehicle
+    # })
 
-    agent = BCStochasticAgent(input_size=15, hidden_dim=1024, action_dim=2, log_std_bounds=(-2, 5), checkpoint=args.checkpoint)
+    agent = BCStochasticAgent(input_size=15, hidden_dim=512, action_dim=2, log_std_bounds=(-2, 5),
+                              checkpoint=args.checkpoint)
     dataset = AffordancesDataset(args.data)
-    trainer = BCTrainer(agent, dataset, env,
+    trainer = BCTrainer(agent, dataset, None,
                         use_wandb=args.wandb,
                         epochs=args.epochs,
                         eval_frequency=args.eval_frequency,

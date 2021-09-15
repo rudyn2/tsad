@@ -1,8 +1,6 @@
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-import math
 import sac.utils as utils
 from . import Agent
 from sac.agent.actor import DiagGaussianActor
