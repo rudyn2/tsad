@@ -1,0 +1,234 @@
+import argparse
+import sys
+import time
+
+import numpy as np
+import torch
+import wandb
+from gym_carla.envs.carla_pid_env import CarlaPidEnv
+from torch.utils.data import DataLoader
+
+from agent import BCStochasticAgent, MultiTaskAgent
+from models.carlaAffordancesDataset import AffordancesDataset, HLCAffordanceDataset
+
+HLC_TO_NUMBER = {
+    'RIGHT': 0,
+    'LEFT': 1,
+    'STRAIGHT': 2,
+    'LANEFOLLOW': 3
+}
+
+
+def get_number_order(num):
+    order = 0
+    while num != 0:
+        num = num // 10
+        order += 1
+    return order
+
+
+def to_np(t):
+    if t is None:
+        return None
+    elif t.nelement() == 0:
+        return np.array([])
+    else:
+        return t.cpu().detach().numpy()
+
+
+def collate_fn(samples: list) -> (dict, dict):
+    """
+    Returns a dictionary with grouped samples. Each sample is a tuple which comes from the dataset __getitem__.
+    """
+    obs, act = [], []
+    for t in samples:
+        obs.append(dict(encoding=t[0]))
+        # target_speed, steer
+        act.append(np.array([t[2], t[1][2]]))  # t[2] = speed, t[1] = control
+    return obs, act
+
+
+class BCTrainer(object):
+    """
+    Auxiliary class to train a policy using Behavioral Cloning over affordances trajectories.
+    """
+
+    def __init__(self,
+                 actor: MultiTaskAgent,
+                 dataset: AffordancesDataset,
+                 env: CarlaPidEnv,
+                 batch_size: int = 128,
+                 epochs: int = 100,
+                 eval_frequency: int = 10,
+                 open_loop_eval_frequency: int = 2,
+                 eval_episodes: int = 3,
+                 use_wandb: bool = False
+                 ):
+        self._actor = actor
+        self._dataset = dataset
+        self._epochs = epochs
+        self._env = env
+        self._wandb = use_wandb
+        self._eval_frequency = eval_frequency
+        self._open_loop_eval_frequency = open_loop_eval_frequency
+        self._eval_episode = eval_episodes
+
+        self._batch_size = batch_size
+        self.__hlc_to_train = [3]
+
+        if dataset:
+            self._train_loaders = {hlc: DataLoader(HLCAffordanceDataset(self._dataset, hlc=hlc),
+                                                   batch_size=self._batch_size, collate_fn=collate_fn,
+                                                   shuffle=True) for hlc in self.__hlc_to_train}
+        self.mse = torch.nn.MSELoss()
+        self._device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    def eval(self):
+        print("\nEvaluating...")
+        total_reward = 0
+        self._actor.eval_mode()
+        for e in range(self._eval_episode):
+            obs = self._env.reset()
+            episode_reward = 0
+            done = False
+            while not done:
+                start = time.time()
+                action = self._actor.act_single(obs, task=obs["hlc"] - 1)
+                speed = np.linalg.norm(obs["speed"])
+                obs, rew, done, _ = self._env.step(action=action)
+                episode_reward += rew
+
+                fps = 1 / (time.time() - start)
+                sys.stdout.write("\r")
+                sys.stdout.write(f"fps={fps:.2f} speed={speed:.2f} rew={rew:.2f}")
+                sys.stdout.flush()
+
+                if self._wandb:
+                    wandb.log({
+                        "eval/instant/speed": speed,
+                        "eval/instant/target_speed": action[0],
+                        "eval/instant/steer": action[1],
+                    })
+
+            if self._wandb:
+                wandb.log({
+                    "eval/episode_reward": episode_reward
+                })
+            print(f"\nEval episode {e}: {episode_reward:.2f}")
+            total_reward += episode_reward
+
+        avg_reward = total_reward / self._eval_episode
+        print(f"Avg reward: {avg_reward:.2f}")
+        if self._wandb:
+            wandb.log({"eval_actor/eval_reward": avg_reward})
+        self._actor.train_mode()
+
+    def open_loop_eval(self):
+        """
+        Performs open-loop evaluation in the given dataset.
+        """
+        self._actor.eval_mode()
+        print("\n" + "-" * 50)
+        print("Open loop evaluation:")
+        for hlc in self.__hlc_to_train:
+            hlc_loader = self._train_loaders[hlc]
+            hlc_loss = 0
+            for i, (obs, act) in enumerate(hlc_loader):
+                act_expert = torch.tensor(np.stack(act), device=self._device).float()
+                act_pred = self._actor.act_batch(obs, hlc)
+                hlc_loss += self.mse(act_pred, act_expert)
+            hlc_loss /= len(hlc_loader)
+            print(f"HLC {hlc} MSE Loss: {hlc_loss}")
+            if self._wandb:
+                wandb.log({f"open_loop_eval/mse_{hlc}": hlc_loss})
+        print("-" * 50)
+        self._actor.train_mode()
+
+    def run(self):
+        if self._wandb:
+            wandb.init(project='tsad', entity='autonomous-driving')
+
+        steps = {0: 0, 1: 0, 2: 0, 3: 0}
+        for e in range(1, self._epochs + 1):
+            for hlc in self.__hlc_to_train:
+                hlc_loader = self._train_loaders[hlc]
+
+                for i, (obs, act) in enumerate(hlc_loader):
+                    bc_loss = self._actor.update(obs, act, hlc)
+
+                    if self._wandb:
+                        wandb.log({f'train_actor/bc_loss_{hlc}': bc_loss,
+                                   f'steps_{hlc}': steps[hlc]})
+                    steps[hlc] += 1
+
+                    sys.stdout.write("\r")
+                    sys.stdout.write(
+                        f"Epoch={str(e).zfill(get_number_order(self._epochs))}(hlc={hlc}) "
+                        f"{str(i).zfill(get_number_order(len(hlc_loader)))}/{len(hlc_loader)}] bc_loss={bc_loss:.5f}")
+                    sys.stdout.flush()
+
+            if e % self._eval_frequency == 0:
+                self.eval()
+                self._actor.save()
+            if e % self._open_loop_eval_frequency == 0:
+                self.open_loop_eval()
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Settings for the data capture",
+                                     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('--data', required=True, type=str, help='Path to data folder')
+    parser.add_argument('-H', '--host', default='localhost', type=str, help='CARLA server ip address')
+    parser.add_argument('-p', '--port', default=2000, type=int, help='CARLA server port number')
+    parser.add_argument('--tm-port', default=8000, type=int, help='Traffic manager port')
+    parser.add_argument('-t', '--town', default='Town01', type=str, help="town to use")
+    parser.add_argument('-ve', '--vehicles', default=100, type=int,
+                        help="number of vehicles to spawn in the simulation")
+    parser.add_argument('-wa', '--walkers', default=0, type=int, help="number of walkers to spawn in the simulation")
+    parser.add_argument('--eval-frequency', default=50, type=int)
+    parser.add_argument('--open-loop-eval-frequency', default=20, type=int)
+    parser.add_argument('--epochs', default=15, type=int)
+    parser.add_argument('--wandb', action='store_true')
+    parser.add_argument('--checkpoint', default='checkpoint.pt', type=str)
+
+    args = parser.parse_args()
+
+    if args.wandb:
+        wandb.init(project='tsad', entity='autonomous-driving', name='bc-train')
+
+    # env = CarlaPidEnv({
+    #     # carla connection parameters+
+    #     'host': args.host,
+    #     'port': args.port,  # connection port
+    #     'town': 'Town01',  # which town to simulate
+    #     'traffic_manager_port': args.tm_port,
+    #
+    #     # simulation parameters
+    #     'verbose': False,
+    #     'vehicles': args.vehicles,  # number of vehicles in the simulation
+    #     'walkers': args.walkers,  # number of walkers in the simulation
+    #     'obs_size': 224,  # sensor width and height
+    #     'max_past_step': 1,  # the number of past steps to draw
+    #     'dt': 0.025,  # time interval between two frames
+    #     'reward_weights': [0.3, 0.3, 0.3],
+    #     'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
+    #     'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
+    #     'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
+    #     'max_time_episode': 1000,  # maximum timesteps per episode
+    #     'max_waypt': 12,  # maximum number of waypoints
+    #     'd_behind': 12,  # distance behind the ego vehicle (meter)
+    #     'out_lane_thres': 2.0,  # threshold for out of lane
+    #     'desired_speed': 6,  # desired speed (m/s)
+    #     'speed_reduction_at_intersection': 0.75,
+    #     'max_ego_spawn_times': 200,  # maximum times to spawn ego vehicle
+    # })
+
+    agent = BCStochasticAgent(input_size=15, hidden_dim=512, action_dim=2, log_std_bounds=(-2, 5),
+                              checkpoint=args.checkpoint)
+    dataset = AffordancesDataset(args.data)
+    trainer = BCTrainer(agent, dataset, None,
+                        use_wandb=args.wandb,
+                        epochs=args.epochs,
+                        eval_frequency=args.eval_frequency,
+                        open_loop_eval_frequency=args.open_loop_eval_frequency)
+    trainer.run()
