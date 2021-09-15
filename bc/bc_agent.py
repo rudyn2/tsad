@@ -1,4 +1,3 @@
-from abc import abstractmethod
 from typing import Union
 
 import numpy as np
@@ -6,9 +5,9 @@ import torch.cuda
 import torch.nn as nn
 from torch.optim.adam import Adam
 
-from sac.agent.actor import DiagGaussianActor
 from models.ActorCritic import Actor
-from squashed_gaussian import SquashedGaussianMLPActor
+from agents.squashed_gaussian import SquashedGaussianMLP
+from agents.agent import MultiTaskActor
 
 
 def to_np(t):
@@ -20,54 +19,11 @@ def to_np(t):
         return t.cpu().detach().numpy()
 
 
-class MultiTaskAgent:
-
-    @abstractmethod
-    def act_batch(self, obs: list, task: int) -> Union[list, torch.Tensor]:
-        """
-        Given a list of observations in the context of some task, return the predicted action for each observation.
-        (the observation's type should be handled in the inherited classes)
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def act_single(self, obs: dict, task: int) -> list:
-        """
-        Given a single observation in the context of some task, return the predicted action.
-        (the observation's type should be handled in the inherited classes)
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def update(self, obs: list, act: list, task: int) -> float:
-        """
-        Given a list of observations in the context of some task, update the agent and return some metric (e.g. loss).
-        (the observation's and action's type should be handled in the inherited classes)
-        """
-        raise NotImplementedError
-
-    @abstractmethod
-    def train_mode(self):
-        raise NotImplementedError
-
-    @abstractmethod
-    def eval_mode(self):
-        raise NotImplementedError
-    
-    @abstractmethod
-    def save(self):
-        raise NotImplementedError
-
-    @abstractmethod
-    def load(self):
-        raise NotImplementedError
-
-
-class BCStochasticAgent(MultiTaskAgent):
+class BCStochasticAgent(MultiTaskActor):
 
     def __init__(self, **kwargs):
         self._actor = nn.ModuleDict({
-            str(hlc): SquashedGaussianMLPActor(
+            str(hlc): SquashedGaussianMLP(
                 kwargs["input_size"],
                 kwargs["action_dim"],
                 (kwargs["hidden_dim"], kwargs["hidden_dim"]),
@@ -94,7 +50,7 @@ class BCStochasticAgent(MultiTaskAgent):
             action, _ = self._actor[str(task)].get_distribution(encodings)  # (1, 2)
         return list(action.squeeze(dim=0).cpu().numpy())                    # [target_speed, steer]
 
-    def update(self, obs: list, act: list, task: int) -> float:
+    def supervised_update(self, obs: list, act: list, task: int) -> float:
         encoding = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0).float()
         act = torch.tensor(act, device=self._device).float()
         pred_act, _ = self._actor[str(task)].get_distribution(encoding)
@@ -117,7 +73,13 @@ class BCStochasticAgent(MultiTaskAgent):
         self._actor = torch.load(self._checkpoint)
 
 
-class BCDeterministicAgent(MultiTaskAgent):
+class BCDeterministicAgent(MultiTaskActor):
+    def load(self):
+        pass
+
+    def save(self):
+        pass
+
     def __init__(self, **kwargs):
         self._actor = Actor(kwargs["input_size"], kwargs["hidden_dim"], kwargs["action_dim"], output_factor=1)
         self._device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -135,7 +97,7 @@ class BCDeterministicAgent(MultiTaskAgent):
             pred_act = self._actor(obs, task)
             return pred_act
 
-    def update(self, obs: list, act: list, task: int) -> float:
+    def supervised_update(self, obs: list, act: list, task: int) -> float:
         pred_act = self._actor(obs, task)
         act_e_hlc = torch.tensor(np.stack(act), device=self._device).float()
         mse_loss = self._actor_loss(pred_act, act_e_hlc)

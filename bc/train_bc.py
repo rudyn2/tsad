@@ -5,6 +5,7 @@ import time
 import numpy as np
 import torch
 import wandb
+from typing import Union
 from gym_carla.envs.carla_pid_env import CarlaPidEnv
 from gym_carla.envs.carla_env import CarlaEnv
 from torch.utils.data import DataLoader
@@ -61,7 +62,7 @@ class BCTrainer(object):
     def __init__(self,
                  actor: MultiTaskAgent,
                  dataset: AffordancesDataset,
-                 env: CarlaPidEnv,
+                 env: Union[CarlaPidEnv, CarlaEnv],
                  action_space: str = "pid",
                  batch_size: int = 128,
                  epochs: int = 100,
@@ -80,7 +81,7 @@ class BCTrainer(object):
         self._eval_episode = eval_episodes
 
         self._batch_size = batch_size
-        self.__hlc_to_train = [3]
+        self.__hlc_to_train = [0, 1, 2, 3]
 
         if dataset:
             act_collate_fn = get_collate_fn(action_space)
@@ -106,8 +107,9 @@ class BCTrainer(object):
                 episode_reward += rew
 
                 fps = 1 / (time.time() - start)
+                action_str = ("{:.2f}, "*len(action)).format(*action)
                 sys.stdout.write("\r")
-                sys.stdout.write(f"fps={fps:.2f} speed={speed:.2f} rew={rew:.2f}")
+                sys.stdout.write(f"fps={fps:.2f} action={action_str} speed={speed:.2f} rew={rew:.2f}")
                 sys.stdout.flush()
 
                 if self._wandb:
@@ -224,7 +226,7 @@ if __name__ == '__main__':
         'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
         'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
         'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
-        'max_time_episode': 200,  # maximum timesteps per episode
+        'max_time_episode': 500,  # maximum timesteps per episode
         'max_waypt': 12,  # maximum number of waypoints
         'd_behind': 12,  # distance behind the ego vehicle (meter)
         'out_lane_thres': 2.0,  # threshold for out of lane

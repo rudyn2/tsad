@@ -16,7 +16,10 @@ def mlp(sizes, activation, output_activation=nn.Identity):
     return nn.Sequential(*layers)
 
 
-class SquashedGaussianMLPActor(nn.Module):
+class SquashedGaussianMLP(nn.Module):
+    """
+    Custom MLP architecture which represents a Gaussian function approximation.
+    """
 
     def __init__(self, obs_dim: int, act_dim: int, hidden_sizes: tuple, activation: nn.Module, act_limit: int = 1):
         super().__init__()
@@ -25,22 +28,19 @@ class SquashedGaussianMLPActor(nn.Module):
         self.log_std_layer = nn.Linear(hidden_sizes[-1], act_dim)
         self.act_limit = act_limit
 
-    def get_distribution(self, obs):
+    def get_distribution(self, obs) -> Normal:
         net_out = self.net(obs)
         mu = self.mu_layer(net_out)
         log_std = self.log_std_layer(net_out)
         log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
         std = torch.exp(log_std)
-        return mu, std
+        return Normal(mu, std)
 
     def forward(self, obs, deterministic=False):
-        mu, std = self.get_distribution(obs)
-
-        # Pre-squash distribution and sample
-        pi_distribution = Normal(mu, std)
+        pi_distribution = self.get_distribution(obs)
         if deterministic:
             # Only used for evaluating policy at test time.
-            pi_action = mu
+            pi_action = pi_distribution.mean
         else:
             pi_action = pi_distribution.rsample()
 

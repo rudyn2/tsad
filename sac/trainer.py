@@ -9,9 +9,13 @@ import torch
 
 import sac.utils as utils
 from models.carla_wrapper import EncodeWrapper
-from replay_buffer import MixedReplayBuffer
-from sac.agent.sac import SACAgent
 from sac.rl_logger import RLLogger
+from typing import Dict, Union
+from torch.utils.data import DataLoader
+from sac.replay_buffer import OnlineReplayBuffer
+from gym_carla.envs.carla_env import CarlaEnv
+from gym_carla.envs.carla_pid_env import CarlaPidEnv
+from sac.sac_agent import SACAgent
 
 
 ROAD_OPTION_TO_NAME = {
@@ -40,9 +44,10 @@ def action_proxy(act: np.ndarray) -> list:
 
 class SACTrainer(object):
     def __init__(self,
-                 env: EncodeWrapper,
+                 env: Union[CarlaEnv, CarlaPidEnv],
                  agent: SACAgent,
-                 buffer: MixedReplayBuffer,
+                 buffer: OnlineReplayBuffer,
+                 dataloaders: Dict[DataLoader],
                  log_eval=False,
                  **kwargs):
         self.work_dir = os.getcwd()
@@ -55,6 +60,7 @@ class SACTrainer(object):
         self.num_train_steps = kwargs["num_train_steps"]
         self.num_seed_steps = kwargs["num_seed_steps"]
         self.eval_frequency = kwargs["eval_frequency"]
+        self.bc_loaders = dataloaders
 
         self.env = env
         self.agent = agent
@@ -151,7 +157,8 @@ class SACTrainer(object):
             next_obs, reward, done, _ = self.env.step(action)
             not_done = 1 - float(done)
             episode_reward += reward
-            wandb.log({"instant/reward": reward})
+            wandb.log({"instant/reward": reward,
+                       "rl_step": self.step})
 
             self.replay_buffer.add(obs, action, reward, next_obs, not_done)
 
