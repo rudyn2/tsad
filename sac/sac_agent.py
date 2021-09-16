@@ -1,109 +1,25 @@
-from typing import Union
+import os
+from typing import Dict
 
 import numpy as np
 import torch
 import torch.nn.functional as F
-import sac.utils as utils
-from agents.agent import MultiTaskActor, MultiTaskCritic
-from agents.squashed_gaussian import SquashedGaussianMLP, mlp
 import wandb
-import os
-import torch.nn as nn
-from typing import Dict, Tuple
 from torch.utils.data import DataLoader
-from sac.replay_buffer import OnlineReplayBuffer
+
+import sac.utils as utils
+from replay_buffer import OnlineReplayBuffer
+from sac_ac import SACActor, SACCritic
+
+
+def to_tensor(*args, device: str):
+    tensors = []
+    for arg in args:
+        tensors.append(torch.tensor(arg, device=device).float())
+    return tensors
 
 
 # https://github.com/openai/spinningup/tree/master/spinup/algos/pytorch/sac
-
-class SACActor(MultiTaskActor, nn.Module):
-
-    def __init__(self,
-                 input_dim: int,
-                 hidden_dim: tuple,
-                 output_dim: int):
-        super().__init__()
-
-        self._actors = nn.ModuleDict({
-            str(hlc): SquashedGaussianMLP(
-                input_dim,
-                output_dim,
-                hidden_dim,
-                nn.ReLU
-            ) for hlc in range(4)
-        })
-
-    def act_batch(self, obs: list, task: int) -> Union[list, torch.Tensor]:
-        pass
-
-    def act_single(self, obs: dict, task: int) -> list:
-        pass
-
-    def forward(self, obs: list, hlc: int):
-        """
-        Returns actions and log-probability over those actions conditioned to the observations.
-        For action selection please use act_batch or act_single.
-        """
-        encoding = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0).float()
-        pi_distribution = self._actor[str(hlc)].get_distribution(encoding)
-        pi_action = pi_distribution.rsample()
-        pi_action = torch.tanh(pi_action)
-        logp_pi = pi_distribution.log_prob(pi_action).sum(axis=-1)
-        logp_pi -= (2 * (np.log(2) - pi_action - F.softplus(-2 * pi_action))).sum(axis=1)
-        return pi_action, logp_pi
-
-    def supervised_update(self, obs: list, act: list, task: int) -> float:
-        pass
-
-    def train_mode(self):
-        self._actors.train()
-
-    def eval_mode(self):
-        self._actors.eval()
-
-    def save(self):
-        pass
-
-    def load(self):
-        pass
-
-
-class SACCritic(MultiTaskCritic, nn.Module):
-
-    def __init__(self,
-                 input_dim: int,
-                 hidden_dim: tuple,
-                 output_dim: int):
-        super().__init__()
-
-        self._critics1 = nn.ModuleDict({
-            str(hlc): mlp([input_dim] + list(hidden_dim) + [output_dim], nn.ReLU) for hlc in range(4)
-        })
-
-        self._critics2 = nn.ModuleDict({
-            str(hlc): mlp([input_dim] + list(hidden_dim) + [output_dim], nn.ReLU) for hlc in range(4)
-        })
-
-    def forward(self, obs, act, hlc) -> Tuple[torch.Tensor, torch.Tensor]:
-        assert obs.size(0) == act.size(0)
-        obs_action = torch.cat([obs, act], dim=1)
-        q1 = self._critics1[hlc](obs_action)
-        q2 = self._critics2[hlc](obs_action)
-        return q1, q2
-
-    def train_mode(self):
-        self._critics1.train()
-        self._critics2.train()
-
-    def eval_mode(self):
-        self._critics1.eval()
-        self._critics2.eval()
-
-    def save(self):
-        pass
-
-    def load(self):
-        pass
 
 
 class SACAgent(object):
@@ -114,6 +30,7 @@ class SACAgent(object):
                  action_dim: int,  # used only for target entropy definition
                  action_range: tuple,
                  device: str = 'cuda',
+                 wandb: bool = False,
                  discount: float = 0.99,
                  init_temperature: float = 0.3,
                  critic_tau: float = 0.005,
@@ -138,10 +55,11 @@ class SACAgent(object):
         self.actor_bc_update_frequency = actor_bc_update_frequency
         self.batch_size = batch_size
         self.learnable_temperature = learnable_temperature
+        self._wandb = wandb
 
         # store actor and critic
-        self.critic = SACCritic(input_dim=observation_dim+action_dim, hidden_dim=(512, 512), output_dim=1)
-        self.critic_target = SACCritic(input_dim=observation_dim+action_dim, hidden_dim=(512, 512), output_dim=1)
+        self.critic = SACCritic(input_dim=observation_dim + action_dim, hidden_dim=(512, 512))
+        self.critic_target = SACCritic(input_dim=observation_dim + action_dim, hidden_dim=(512, 512))
         # noinspection PyTypeChecker
         self.critic_target.load_state_dict(self.critic.state_dict())
         self.actor = SACActor(input_dim=observation_dim, hidden_dim=(512, 512), output_dim=action_dim)
@@ -171,7 +89,7 @@ class SACAgent(object):
         self.train()
         self.critic_target.train()
         self._step = 0
-        self.__hlc_to_train = [0, 1, 2, 3]
+        self.__hlc_to_train = [3]  # WHEN EVERYTHING IS READY, CHANGE THIS TO ALL THE HIGH LEVEL TASKS
 
         # Freeze target networks with respect to optimizers (only update via polyak averaging)
         for p in self.critic_target.parameters():
@@ -193,17 +111,21 @@ class SACAgent(object):
 
     def update_critic(self, obs, act, reward, next_obs, not_done, hlc: int):
 
-        dist = self.actor(next_obs, hlc=hlc)
-        next_action = dist.rsample()
-        log_prob = dist.log_prob(next_action).sum(-1, keepdim=False)
-        target_q1, target_q2 = self.critic_target(next_obs[hlc], next_action, hlc=hlc)
+        # unpack and format
+        obs = [o["affordances"] for o in obs]
+        next_obs = [o["affordances"] for o in next_obs]
+        obs_t, act_t, rew_t, next_obs_t, not_done_t = to_tensor(obs, act, reward, next_obs, not_done, device=self.device)
+
+        next_action, log_prob = self.actor(next_obs_t, hlc)
+        target_q1, target_q2 = self.critic_target(next_obs_t, next_action, hlc)
         target_v = torch.min(target_q1, target_q2) - self.alpha.detach() * log_prob
-        target_q = reward[hlc] + (not_done[hlc] * self.discount * target_v).float()
+        target_q = rew_t + (not_done_t * self.discount * target_v).float()
         target_q = target_q.detach()
-        current_q1, current_q2 = self.critic(obs[hlc], act[hlc].float(), hlc=hlc)
+        current_q1, current_q2 = self.critic(obs_t, act_t, hlc)
         critic_loss = F.mse_loss(current_q1, target_q) + F.mse_loss(current_q2, target_q)
 
-        wandb.log({'train_critic/loss': critic_loss})
+        if self._wandb:
+            wandb.log({'train_critic/loss': critic_loss})
 
         # Optimize the critic
         self.critic_optimizer.zero_grad()
@@ -212,15 +134,18 @@ class SACAgent(object):
 
     def update_actor_and_alpha(self, obs: list, hlc: int):
 
-        action, log_prob = self.actor(obs, hlc=hlc)
-        actor_q1, actor_q2 = self.critic.critic_batch(obs, action, hlc)
+        obs_t = to_tensor([o["affordances"] for o in obs], device=self.device)[0]
+
+        # calculate sac loss
+        action, log_prob = self.actor(obs_t, hlc)
+        actor_q1, actor_q2 = self.critic(obs_t, action, hlc)
         actor_q = torch.min(actor_q1, actor_q2)
         sac_loss = (self.alpha.detach() * log_prob - actor_q).mean()
-        log_prob = log_prob.mean()
 
-        wandb.log({'train_actor/sac_loss': sac_loss.item()})
-        wandb.log({'train_actor/target_entropy': self.target_entropy})
-        wandb.log({'train_actor/entropy': -log_prob.mean().item()})
+        if self._wandb:
+            wandb.log({'train_actor/sac_loss': sac_loss.item()})
+            wandb.log({'train_actor/target_entropy': self.target_entropy})
+            wandb.log({'train_actor/entropy': -log_prob.mean().item()})
 
         # optimize the actor
         self.actor_optimizer.zero_grad()
@@ -230,16 +155,24 @@ class SACAgent(object):
         if self.learnable_temperature:
             self.log_alpha_optimizer.zero_grad()
             alpha_loss = (- self.alpha * (log_prob + self.target_entropy).detach()).mean()
-            wandb.log({'train_alpha/loss': alpha_loss})
-            wandb.log({'train_alpha/value': self.alpha})
+            if self._wandb:
+                wandb.log({'train_alpha/loss': alpha_loss})
+                wandb.log({'train_alpha/value': self.alpha})
             alpha_loss.backward()
             self.log_alpha_optimizer.step()
 
     def update_actor_with_bc(self, loader: DataLoader, hlc: int):
 
-        for i, (obs, act) in loader:
-            loss = self.actor.supervised_update(obs, act, hlc)
-            wandb.log({'train_actor/bc_loss': loss})
+        for i, (obs, act) in enumerate(loader):
+            obs, act = to_tensor([o["encoding"] for o in obs], act, device=self.device)
+            loss = self.actor.get_supervised_loss(obs, act, hlc)
+
+            self.actor_optimizer.zero_grad()
+            loss.backward()
+            self.actor_optimizer.step()
+
+            if self._wandb:
+                wandb.log({'train_actor/bc_loss': loss})
 
     def update(self,
                replay_buffer: OnlineReplayBuffer,
@@ -250,8 +183,9 @@ class SACAgent(object):
         for hlc in self.__hlc_to_train:
             online_samples = replay_buffer.sample(self.batch_size, hlc)
             obs, act, reward, next_obs, not_done = online_samples
-            rewards = np.mean(reward[hlc])
-            wandb.log({f'train/batch_reward_{hlc}': rewards})
+            rewards = np.mean(reward)
+            if self._wandb:
+                wandb.log({f'train/batch_reward_{hlc}': rewards})
             self.update_critic(obs, act, reward, next_obs, not_done, hlc)
 
             if step % self.actor_bc_update_frequency == 0:
@@ -272,3 +206,48 @@ class SACAgent(object):
         torch.save(self.critic_target.state_dict(), critic_filename)
         wandb.save(actor_filename)
         wandb.save(critic_filename)
+
+
+if __name__ == "__main__":
+    from models.carlaAffordancesDataset import AffordancesDataset, HLCAffordanceDataset
+    from bc.train_bc import get_collate_fn
+    from torch.utils.data import DataLoader
+    import time
+
+    data_path = "../data/"
+    act_mode = "raw"
+    number_of_test_updates = 100
+
+    # pseudo-test --->
+    obs_gen = lambda: dict(camera=None, affordances=np.random.rand(15), speed=np.random.rand(3) * 5,
+                           hlc=int(np.random.rand() * 4))
+    act_gen = lambda: np.random.rand(3 if act_mode == "raw" else 2)
+    reward_gen = lambda: np.random.rand() * 3
+    done_gen = lambda: True if np.random.rand() < 0.5 else False
+    transition_tuple_gen = lambda: (obs_gen(), act_gen(), reward_gen(), obs_gen(), done_gen())
+
+    # create fake online replay buffer
+    buffer = OnlineReplayBuffer(8192)
+    for _ in range(8192 * 3):
+        buffer.add(*transition_tuple_gen())
+
+    # create dummy data laoders (offline dataset)
+    dataset = AffordancesDataset(data_path)
+    custom_collate_fn = get_collate_fn(act_mode)
+    bc_loaders = {hlc: DataLoader(HLCAffordanceDataset(dataset, hlc=hlc),
+                                  batch_size=128,
+                                  collate_fn=custom_collate_fn,
+                                  shuffle=True) for hlc in [0, 1, 2, 3]}
+
+    sac_agent = SACAgent(observation_dim=15,
+                         action_dim=2 if act_mode == "pid" else 3,
+                         action_range=(-1, 1))
+
+    start = time.time()
+    for i in range(number_of_test_updates):
+        sac_agent.update(replay_buffer=buffer,
+                         bc_loaders=bc_loaders,
+                         step=i)
+    total_time = time.time() - start
+    print(f"{number_of_test_updates} updates in {total_time:.2f} seconds "
+          f"(avg of {(total_time/number_of_test_updates):.2f} per step)")

@@ -25,7 +25,7 @@ class MultiTaskAgent(ABC):
 class MultiTaskActor(MultiTaskAgent, ABC):
 
     @abstractmethod
-    def act_batch(self, obs: list, task: int) -> Union[list, torch.Tensor]:
+    def act_batch(self, obs: torch.Tensor, task: int) -> Union[list, torch.Tensor]:
         """
         Given a list of observations in the context of some task, return the predicted action for each observation.
         (the observation's type should be handled in the inherited classes)
@@ -33,7 +33,7 @@ class MultiTaskActor(MultiTaskAgent, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def act_single(self, obs: dict, task: int) -> list:
+    def act_single(self, obs: torch.Tensor, task: int) -> list:
         """
         Given a single observation in the context of some task, return the predicted action.
         (the observation's type should be handled in the inherited classes)
@@ -41,9 +41,9 @@ class MultiTaskActor(MultiTaskAgent, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def supervised_update(self, obs: list, act: list, task: int) -> float:
+    def get_supervised_loss(self, obs: torch.Tensor, act: torch.Tensor, task: int) -> torch.Tensor:
         """
-        Given a list of observations in the context of some task, update the agent and return some metric (e.g. loss).
+        Given a list of observations in the context of some task, return the supervised loss.
         (the observation's and action's type should be handled in the inherited classes)
         """
         raise NotImplementedError

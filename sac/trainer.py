@@ -4,11 +4,9 @@ import time
 import numpy as np
 import wandb
 
-import cv2
 import torch
 
 import sac.utils as utils
-from models.carla_wrapper import EncodeWrapper
 from sac.rl_logger import RLLogger
 from typing import Dict, Union
 from torch.utils.data import DataLoader
@@ -77,7 +75,6 @@ class SACTrainer(object):
         for episode in range(self.num_eval_episodes):
             duration = 0
             obs = self.env.reset()
-            self.agent.reset()
             done = False
             episode_reward = 0
             while not done:
@@ -127,7 +124,6 @@ class SACTrainer(object):
 
                 print("\nResetting")
                 obs = self.env.reset()
-                self.agent.reset()
                 episode_reward = 0
                 episode_step = 0
                 episode += 1
@@ -182,5 +178,4 @@ class SACTrainer(object):
         # save last agent
         self.agent.save(self.work_dir, tag="last")
         self.env.reset()
-        cv2.destroyAllWindows()
         self.logger.close()

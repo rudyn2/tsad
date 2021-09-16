@@ -10,7 +10,8 @@ from gym_carla.envs.carla_pid_env import CarlaPidEnv
 from gym_carla.envs.carla_env import CarlaEnv
 from torch.utils.data import DataLoader
 
-from agent import BCStochasticAgent, MultiTaskAgent
+from agents.agent import MultiTaskAgent
+from .bc_agent import BCStochasticAgent, BCDeterministicAgent
 from models.carlaAffordancesDataset import AffordancesDataset, HLCAffordanceDataset
 
 HLC_TO_NUMBER = {

@@ -93,14 +93,13 @@ class OnlineReplayBuffer(object):
         'LANEFOLLOW': 3
     }
 
-    def __init__(self,  online_memory_size: int):
-
+    def __init__(self, online_memory_size: int):
         # create buffer per each high level command
         self._online_buffers = {
-            0: ReplayMemoryFast(online_memory_size),    # RIGHT
-            1: ReplayMemoryFast(online_memory_size),    # LEFT
-            2: ReplayMemoryFast(online_memory_size),    # STRAIGHT
-            3: ReplayMemoryFast(online_memory_size)     # LANE FOLLOW
+            0: ReplayMemoryFast(online_memory_size),  # RIGHT
+            1: ReplayMemoryFast(online_memory_size),  # LEFT
+            2: ReplayMemoryFast(online_memory_size),  # STRAIGHT
+            3: ReplayMemoryFast(online_memory_size)  # LANE FOLLOW
         }
 
     def sample(self, batch_size: int, hlc: int):
@@ -117,6 +116,9 @@ class OnlineReplayBuffer(object):
         for k in self._online_buffers.keys():
             s += f"{k}: {len(self._online_buffers[k])} samples\n"
         return s
+
+    def __len__(self):
+        return sum([len(b) for b in self._online_buffers.values()])
 
 
 class OfflineBuffer:
@@ -189,8 +191,19 @@ class OfflineBuffer:
 
 
 if __name__ == '__main__':
+    obs_gen = lambda: dict(camera=None, affordances=np.random.rand(15), speed=np.random.rand(3) * 5,
+                           hlc=int(np.random.rand() * 4))
+    act_gen = lambda: np.random.rand(3)
+    reward_gen = lambda: np.random.rand() * 3
+    done_gen = lambda: True if np.random.rand() < 0.5 else False
+    transition_tuple_gen = lambda: (obs_gen(), act_gen(), reward_gen(), obs_gen(), done_gen())
 
-    offline_buffer = OfflineBuffer(offline_buffer_hdf5='../dataset/encodings/encodings.hdf5',
-                                   offline_buffer_json='../dataset/encodings/encodings.json')
-    offline = offline_buffer.sample(batch_size=32)
+    buffer = OnlineReplayBuffer(8192)
+    for _ in range(8192*3):
+        buffer.add(*transition_tuple_gen())
+    assert len(buffer) == 8192*3
+
+
+
+
 
