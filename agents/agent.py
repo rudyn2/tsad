@@ -33,9 +33,11 @@ class MultiTaskActor(MultiTaskAgent, ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def act_single(self, obs: torch.Tensor, task: int) -> list:
+    def act_single(self, obs: torch.Tensor, sample: bool, task: int) -> list:
         """
         Given a single observation in the context of some task, return the predicted action.
+        If sample is False, the actor must return the mean of the predicted distribution. Otherwise,
+        a sample from that distribution is returned.
         (the observation's type should be handled in the inherited classes)
         """
         raise NotImplementedError

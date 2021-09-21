@@ -71,7 +71,8 @@ class SACAgent(object):
         self.critic_target = SACCritic(input_dim=observation_dim + action_dim, hidden_dim=(512, 512))
         # noinspection PyTypeChecker
         self.critic_target.load_state_dict(self.critic.state_dict())
-        self.actor = SACActor(input_dim=observation_dim, hidden_dim=(512, 512), output_dim=action_dim)
+        self.actor = SACActor(input_dim=observation_dim, hidden_dim=(512, 512),
+                              output_dim=action_dim, action_range=action_range)
 
         # move actor and critic to specified device
         self.critic.to(self.device)
@@ -95,7 +96,7 @@ class SACAgent(object):
         self.log_alpha_optimizer = torch.optim.Adam([self.log_alpha],
                                                     lr=alpha_lr)
 
-        self.train()
+        self.train(True)
         self.critic_target.train()
         self._step = 0
         self.__hlc_to_train = [3]  # WHEN EVERYTHING IS READY, CHANGE THIS TO ALL THE HIGH LEVEL TASKS
@@ -104,19 +105,24 @@ class SACAgent(object):
         for p in self.critic_target.parameters():
             p.requires_grad = False
 
-    def train(self):
-        self.actor.train_mode()
-        self.critic.train_mode()
+        self.training = False
+
+    def train(self, state: bool):
+        self.training = state
+        if state:
+            self.actor.train_mode()
+            self.critic.train_mode()
+        self.actor.eval_mode()
+        self.critic.eval_mode()
 
     @property
     def alpha(self):
         return self.log_alpha.exp()
 
     def act(self, obs, sample=False):
-        dist = self.actor(obs, obs['hlc'])
-        action = dist.sample() if sample else dist.mean
-        action = action.clamp(*self.action_range)
-        return utils.to_np(action[0])
+        single_obs = to_tensor(obs["affordances"], device=self.device)[0]
+        action = self.actor.act_single(single_obs, sample, obs['hlc'])
+        return action
 
     def update_critic(self, obs, act, reward, next_obs, not_done, hlc: int):
 
@@ -219,8 +225,9 @@ class SACAgent(object):
         critic_filename = os.path.join(dirname, f"{tag}_critic.pth")
         torch.save(self.actor.state_dict(), actor_filename)
         torch.save(self.critic_target.state_dict(), critic_filename)
-        wandb.save(actor_filename)
-        wandb.save(critic_filename)
+        if self._wandb:
+            wandb.save(actor_filename)
+            wandb.save(critic_filename)
 
 
 if __name__ == "__main__":

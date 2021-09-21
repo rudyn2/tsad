@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import sac.utils as utils
 
 from agents.agent import MultiTaskActor, MultiTaskCritic
 from agents.squashed_gaussian import SquashedGaussianMLP, mlp
@@ -15,7 +16,8 @@ class SACActor(MultiTaskActor, nn.Module):
     def __init__(self,
                  input_dim: int,
                  hidden_dim: tuple,
-                 output_dim: int):
+                 output_dim: int,
+                 action_range: tuple):
         super().__init__()
 
         self._actors = nn.ModuleDict({
@@ -26,12 +28,19 @@ class SACActor(MultiTaskActor, nn.Module):
                 nn.ReLU
             ) for hlc in range(4)
         })
+        self._action_range = action_range
 
     def act_batch(self, obs: torch.Tensor, task: int) -> Union[list, torch.Tensor]:
         pass
 
-    def act_single(self, obs: torch.Tensor, task: int) -> list:
-        pass
+    def act_single(self, obs: torch.Tensor, sample: bool, task: int) -> list:
+        pi_distribution = self._actors[str(task)].get_distribution(obs)
+        if sample:
+            pi_action = pi_distribution.rsample()
+        else:
+            pi_action = pi_distribution.mean
+        pi_action = torch.tanh(pi_action)
+        return list(utils.to_np(pi_action.clamp(*self._action_range)))
 
     def forward(self, obs: torch.Tensor, hlc: int):
         """
@@ -125,8 +134,8 @@ if __name__ == "__main__":
 
     # test them
     q1, q2 = critic(obs, act, hlc)
-    assert q1.size(0) == batch_size and q1.size(1) == 1
-    assert q2.size(0) == batch_size and q2.size(1) == 1
+    assert q1.size(0) == batch_size and len(q1.size()) == 1
+    assert q2.size(0) == batch_size and len(q2.size()) == 1
 
     action, logp = actor(obs, hlc)
     assert action.size(0) == batch_size and action.size(1) == act_dim

@@ -5,14 +5,14 @@ import warnings
 import torch
 import wandb
 from gym_carla.envs.carla_env import CarlaEnv
+from gym_carla.envs.carla_pid_env import CarlaPidEnv
 from termcolor import colored
 from torch.utils.data import DataLoader
 
 from bc.train_bc import get_collate_fn
 from models.carlaAffordancesDataset import HLCAffordanceDataset, AffordancesDataset
-from gym_carla.envs.carla_pid_env import CarlaPidEnv
-from sac.sac_agent import SACAgent
 from sac.replay_buffer import OnlineReplayBuffer
+from sac.sac_agent import SACAgent
 from sac.trainer import SACTrainer
 
 if __name__ == '__main__':
@@ -70,6 +70,7 @@ if __name__ == '__main__':
     warnings.filterwarnings("ignore")
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     control_action_dim = 2 if args.act_mode == "pid" else 3
+    action_range = (-1, 1) if args.act_mode == "raw" else (-1, 5)
     offline_dataset_path = args.bc
 
     if args.wandb:
@@ -78,11 +79,13 @@ if __name__ == '__main__':
     carla_env = None
     if args.eval_frequency > 0:
         print(colored("[*] Initializing environment", "white"))
+        desired_speed = 6
         env_params = {
             # carla connection parameters+
             'host': args.host,
             'port': args.port,  # connection port
             'town': 'Town01',  # which town to simulate
+            'traffic_manager_port': 8000,
 
             # simulation parameters
             'verbose': False,
@@ -92,18 +95,28 @@ if __name__ == '__main__':
             'max_past_step': 1,  # the number of past steps to draw
             'dt': 1 / 30,  # time interval between two frames
             'reward_weights': [1, 1, 1],  # reward weights [speed, collision, lane distance]
-            'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration-throttle range
-            'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
+            'continuous_steer_range': [-1, 1],
             'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
             'max_time_episode': args.max_episode_steps,  # maximum timesteps per episode
             'max_waypt': 12,  # maximum number of waypoints
             'd_behind': 12,  # distance behind the ego vehicle (meter)
             'out_lane_thres': 2.0,  # threshold for out of lane
-            'desired_speed': 6,  # desired speed (m/s)
+            'desired_speed': desired_speed,  # desired speed (m/s)
             'speed_reduction_at_intersection': 0.75,
             'max_ego_spawn_times': 200,  # maximum times to spawn ego vehicle
         }
-        carla_env = CarlaPidEnv(env_params) if args.act_mode == "pid" else CarlaEnv(env_params)
+
+        if args.act_mode == "pid":
+            env_params.update({
+                'continuous_speed_range': [0, desired_speed]
+            })
+            carla_env = CarlaPidEnv(env_params)
+        else:
+            env_params.update({
+                'continuous_throttle_range': [0, 1],
+                'continuous_brake_range': [0, 1]
+            })
+            carla_env = CarlaEnv(env_params)
         carla_env.reset()
         print(colored(f"[+] Environment ready "
                       f"(max_steps={args.max_episode_steps},"
@@ -124,24 +137,28 @@ if __name__ == '__main__':
         print(colored("Full DRL mode"))
     print(colored("[*] Data structures are ready!", "green"))
 
-    agent = SACAgent(action_dim=control_action_dim,
+    agent = SACAgent(observation_dim=15,
+                     action_range=action_range,
+                     device=device,
+                     action_dim=control_action_dim,
                      batch_size=args.batch_size,
-                     offline_proportion=args.bc_proportion,
                      actor_weight_decay=args.actor_l2,
                      critic_weight_decay=args.critic_l2,
                      learnable_temperature=args.learn_temperature)
-    agent.train()
+    agent.train(True)
 
     print(colored("Training", "white"))
     trainer = SACTrainer(env=carla_env,
                          agent=agent,
                          buffer=online_replay_buffer,
                          dataloaders=bc_loaders,
+                         device=device,
                          eval_frequency=args.eval_frequency,
                          num_seed_steps=args.num_seed,
                          num_train_steps=args.num_train_steps,
-                         num_eval_episodes=args.num_eval_episodes)
-     
+                         num_eval_episodes=args.num_eval_episodes,
+                         seed=42)
+
     try:
         trainer.run()
     except Exception as e:
