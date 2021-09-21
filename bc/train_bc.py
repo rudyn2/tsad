@@ -162,7 +162,7 @@ class BCTrainer(object):
 
                     sys.stdout.write("\r")
                     sys.stdout.write(
-                        f"Epoch={e.zfill(get_number_order(self._epochs))}(hlc={hlc}) [{i.zfill(get_number_order(len(hlc_loader)))}/{len(hlc_loader)}] bc_loss={bc_loss:.5f}")
+                        f"Epoch={str(e).zfill(get_number_order(self._epochs))}(hlc={hlc}) [{str(i).zfill(get_number_order(len(hlc_loader)))}/{len(hlc_loader)}] bc_loss={bc_loss:.5f}")
                     sys.stdout.flush()
 
             if e % self._eval_frequency == 0:
