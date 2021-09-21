@@ -19,6 +19,15 @@ def to_tensor(*args, device: str):
     return tensors
 
 
+def freeze_net(net):
+    for p in net.parameters():
+        p.requires_grad = False
+
+
+def unfreeze_net(net):
+    for p in net.parameters():
+        p.requires_grad = True
+
 # https://github.com/openai/spinningup/tree/master/spinup/algos/pytorch/sac
 
 
@@ -116,16 +125,20 @@ class SACAgent(object):
         next_obs = [o["affordances"] for o in next_obs]
         obs_t, act_t, rew_t, next_obs_t, not_done_t = to_tensor(obs, act, reward, next_obs, not_done, device=self.device)
 
-        next_action, log_prob = self.actor(next_obs_t, hlc)
-        target_q1, target_q2 = self.critic_target(next_obs_t, next_action, hlc)
-        target_v = torch.min(target_q1, target_q2) - self.alpha.detach() * log_prob
-        target_q = rew_t + (not_done_t * self.discount * target_v).float()
-        target_q = target_q.detach()
         current_q1, current_q2 = self.critic(obs_t, act_t, hlc)
+
+        with torch.no_grad():
+            next_action, log_prob = self.actor(next_obs_t, hlc)
+            target_q1, target_q2 = self.critic_target(next_obs_t, next_action, hlc)
+            target_v = torch.min(target_q1, target_q2) - self.alpha.detach() * log_prob
+            target_q = rew_t + (not_done_t * self.discount * target_v).float()
+            target_q = target_q.detach()
+
         critic_loss = F.mse_loss(current_q1, target_q) + F.mse_loss(current_q2, target_q)
 
         if self._wandb:
             wandb.log({'train_critic/loss': critic_loss})
+            wandb.log({'train_critic/log_prob': log_prob.mean().detach().item()})
 
         # Optimize the critic
         self.critic_optimizer.zero_grad()
@@ -188,11 +201,13 @@ class SACAgent(object):
                 wandb.log({f'train/batch_reward_{hlc}': rewards})
             self.update_critic(obs, act, reward, next_obs, not_done, hlc)
 
-            if step % self.actor_bc_update_frequency == 0:
-                self.update_actor_with_bc(bc_loaders[hlc], hlc)
-
+            freeze_net(self.critic)
             if step % self.actor_update_frequency == 0:
                 self.update_actor_and_alpha(obs, hlc)
+            unfreeze_net(self.critic)
+
+            if step % self.actor_bc_update_frequency == 0:
+                self.update_actor_with_bc(bc_loaders[hlc], hlc)
 
             if step % self.critic_target_update_frequency == 0:
                 utils.soft_update_params(self.critic, self.critic_target,
@@ -217,6 +232,7 @@ if __name__ == "__main__":
     data_path = "../data/"
     act_mode = "raw"
     number_of_test_updates = 100
+    use_wandb = True
 
     # pseudo-test --->
     obs_gen = lambda: dict(camera=None, affordances=np.random.rand(15), speed=np.random.rand(3) * 5,
@@ -239,9 +255,12 @@ if __name__ == "__main__":
                                   collate_fn=custom_collate_fn,
                                   shuffle=True) for hlc in [0, 1, 2, 3]}
 
+    if use_wandb:
+        wandb.init(project='tsad', entity='autonomous-driving')
     sac_agent = SACAgent(observation_dim=15,
                          action_dim=2 if act_mode == "pid" else 3,
-                         action_range=(-1, 1))
+                         action_range=(-1, 1),
+                         wandb=use_wandb)
 
     start = time.time()
     for i in range(number_of_test_updates):
