@@ -54,22 +54,40 @@ class AffordancesDataset(object):
                     'timestamp': t_key,
                 })
 
-    def get_item(self, index: int, hlc: int):
+    def get_item(self, index: int, hlc: int, use_next_speed: bool = False):
         timestamp = self.timestamps_lists[hlc][index]
         ep_key, t_key = timestamp['episode'], timestamp['timestamp']
 
-        affordances = self._data_cache[ep_key][t_key]['affordances']
-
-        steer = self._data_cache[ep_key][t_key]['control']['steer']
-        brake = self._data_cache[ep_key][t_key]['control']['brake']
-        throttle = self._data_cache[ep_key][t_key]['control']['throttle']
-        control = np.array([throttle, brake, steer])
-        speed = self._data_cache[ep_key][t_key]['speed']
-
-        command = self._data_cache[ep_key][t_key]['command']
-
+        affordances, control, speed, command = self.unpack_data(ep_key, t_key)
+        if use_next_speed:
+            next_speed = self.get_next_speed(index, ep_key, hlc)
+            return affordances, control, speed, command, next_speed
         return affordances, control, speed, command
     
+    def unpack_data(self, episode, timestamp):
+        affordances = self._data_cache[episode][timestamp]['affordances']
+        steer = self._data_cache[episode][timestamp]['control']['steer']
+        brake = self._data_cache[episode][timestamp]['control']['brake']
+        throttle = self._data_cache[episode][timestamp]['control']['throttle']
+        control = np.array([throttle, brake, steer])
+        speed = self._data_cache[episode][timestamp]['speed']
+        command = self._data_cache[episode][timestamp]['command']
+        return affordances, control, speed, command
+    
+    def get_next_speed(self, index, episode, hlc):
+        next_index = index + 1
+        if next_index < len(self.timestamps_lists[hlc]):
+            timestamp = self.timestamps_lists[hlc][next_index]
+            ep_key, t_key = timestamp['episode'], timestamp['timestamp']
+            # next timestamp in database is the next timestamp in episode, return next speed
+            if ep_key == episode:
+                return self._data_cache[ep_key][t_key]['speed']
+        # actual timestamp is the last in the episode or the last in database, return actual speed
+        else:
+            timestamp = self.timestamps_lists[hlc][index]
+            ep_key, t_key = timestamp['episode'], timestamp['timestamp']
+            return self._data_cache[ep_key][t_key]['speed']
+
     def __len__(self):
         return sum([len(t_list) for t_list in self.timestamps_lists.values()])
 
@@ -78,19 +96,22 @@ class HLCAffordanceDataset(Dataset):
 
     def __init__(self,
                  affordance_dataset: AffordancesDataset,
-                 hlc: int):
+                 hlc: int,
+                 use_next_speed: bool = False):
         self._dataset = affordance_dataset
         self._hlc = hlc
+        self._use_next_speed = use_next_speed
 
     def __getitem__(self, index: int):
-        return self._dataset.get_item(index, self._hlc)
+        return self._dataset.get_item(index, self._hlc, self._use_next_speed)
 
     def __len__(self):
         return len(self._dataset.timestamps_lists[self._hlc])
 
 
 if __name__ == "__main__":
-    path = '/Users/rudy/Documents/affordances/'
+    path = '/home/johnny/Escritorio/data'
     dataset = AffordancesDataset(path)
     hlc_dataset = HLCAffordanceDataset(dataset, hlc=3)
-    item = hlc_dataset[0]
+    item = hlc_dataset[5]
+    print(item)

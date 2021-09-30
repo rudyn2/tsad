@@ -35,16 +35,18 @@ def to_np(t):
         return t.cpu().detach().numpy()
 
 
-def collate_fn(samples: list) -> (dict, dict):
+def collate_fn(samples: list, use_next_speed: bool = False):
     """
     Returns a dictionary with grouped samples. Each sample is a tuple which comes from the dataset __getitem__.
     """
-    obs, act = [], []
+    obs, act, next_speed = [], [], []
     for t in samples:
         obs.append(dict(encoding=t[0]))
         # target_speed, steer
         act.append(np.array([t[2], t[1][2]]))  # t[2] = speed, t[1] = control
-    return obs, act
+        if use_next_speed:
+            next_speed.append(t[3])
+    return obs, act, next_speed
 
 
 class BCTrainer(object):
@@ -61,7 +63,8 @@ class BCTrainer(object):
                  eval_frequency: int = 10,
                  open_loop_eval_frequency: int = 2,
                  eval_episodes: int = 3,
-                 use_wandb: bool = False
+                 use_wandb: bool = False,
+                 use_next_speed: bool = False,
                  ):
         self._actor = actor
         self._dataset = dataset
@@ -71,12 +74,15 @@ class BCTrainer(object):
         self._eval_frequency = eval_frequency
         self._open_loop_eval_frequency = open_loop_eval_frequency
         self._eval_episode = eval_episodes
+        self._eval_step = 0
+        self._eval_episode = 0
+        self._use_next_speed = use_next_speed
 
         self._batch_size = batch_size
         self.__hlc_to_train = [3]
 
         if dataset:
-            self._train_loaders = {hlc: DataLoader(HLCAffordanceDataset(self._dataset, hlc=hlc),
+            self._train_loaders = {hlc: DataLoader(HLCAffordanceDataset(self._dataset, hlc=hlc, use_next_speed=use_next_speed),
                                                batch_size=self._batch_size, collate_fn=collate_fn,
                                                shuffle=True) for hlc in self.__hlc_to_train}
         self.mse = torch.nn.MSELoss()
@@ -107,19 +113,24 @@ class BCTrainer(object):
                         "eval/instant/speed": speed,
                         "eval/instant/target_speed": action[0],
                         "eval/instant/steer": action[1],
+                        "eval/step": self._eval_step,
                     })
+                self._eval_step += 1
 
             if self._wandb:
                 wandb.log({
-                    "eval/episode_reward": episode_reward
+                    "eval/episode_reward": episode_reward,
+                    "eval/episode": self._eval_episode,
                 })
+            self._eval_episode += 1
             print(f"\nEval episode {e}: {episode_reward:.2f}")
             total_reward += episode_reward
 
         avg_reward = total_reward / self._eval_episode
         print(f"Avg reward: {avg_reward:.2f}")
         if self._wandb:
-            wandb.log({"eval_actor/eval_reward": avg_reward})
+            wandb.log({
+                "eval_actor/eval_reward": avg_reward})
         self._actor.train_mode()
 
     def open_loop_eval(self):
@@ -152,8 +163,11 @@ class BCTrainer(object):
             for hlc in self.__hlc_to_train:
                 hlc_loader = self._train_loaders[hlc]
 
-                for i, (obs, act) in enumerate(hlc_loader):
-                    bc_loss = self._actor.update(obs, act, hlc)
+                for i, (obs, act, next_speed) in enumerate(hlc_loader):
+                    if self._use_next_speed:
+                        bc_loss = self._actor.update(obs, act, hlc, next_speed)
+                    else:
+                        bc_loss = self._actor.update(obs, act, hlc)
 
                     if self._wandb:
                         wandb.log({f'train_actor/bc_loss_{hlc}': bc_loss,
@@ -164,12 +178,13 @@ class BCTrainer(object):
                     sys.stdout.write(
                         f"Epoch={str(e).zfill(get_number_order(self._epochs))}(hlc={hlc}) [{str(i).zfill(get_number_order(len(hlc_loader)))}/{len(hlc_loader)}] bc_loss={bc_loss:.5f}")
                     sys.stdout.flush()
-
+            print("")
             if e % self._eval_frequency == 0:
                 self.eval()
                 self._actor.save()
             if e % self._open_loop_eval_frequency == 0:
                 self.open_loop_eval()
+            
 
 
 if __name__ == '__main__':
@@ -188,6 +203,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', default=15, type=int)
     parser.add_argument('--wandb', action='store_true')
     parser.add_argument('--checkpoint', default='checkpoint.pt', type=str)
+    parser.add_argument('--next-speed', action='store_true', help='Whether to use next step speed head or not.')
 
     args = parser.parse_args()
 
@@ -221,11 +237,13 @@ if __name__ == '__main__':
         'max_ego_spawn_times': 200,  # maximum times to spawn ego vehicle
     })
 
-    agent = BCStochasticAgent(input_size=15, hidden_dim=1024, action_dim=2, log_std_bounds=(-2, 5), checkpoint=args.checkpoint)
+    agent = BCStochasticAgent(input_size=15, hidden_dim=1024, action_dim=2, log_std_bounds=(-2, 5), checkpoint=args.checkpoint, next_speed=args.next_speed)
     dataset = AffordancesDataset(args.data)
     trainer = BCTrainer(agent, dataset, env,
                         use_wandb=args.wandb,
                         epochs=args.epochs,
                         eval_frequency=args.eval_frequency,
-                        open_loop_eval_frequency=args.open_loop_eval_frequency)
+                        open_loop_eval_frequency=args.open_loop_eval_frequency,
+                        use_next_speed=args.next_speed
+                        )
     trainer.run()

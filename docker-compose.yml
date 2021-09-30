@@ -15,7 +15,7 @@ services:
     links:
         - "server:carla"
     runtime: nvidia
-    command: python ../bc/train_bc.py --data /home/models/data/ -H carla -p 2004
+    command: python ../bc/train_bc.py --data /home/models/data/ -H carla -p 2004 --next-speed
     volumes:
         - /home/johnny/Escritorio/:/home/models
     environment:
