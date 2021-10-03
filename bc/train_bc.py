@@ -73,7 +73,7 @@ class BCTrainer(object):
         self._wandb = use_wandb
         self._eval_frequency = eval_frequency
         self._open_loop_eval_frequency = open_loop_eval_frequency
-        self._eval_episode = eval_episodes
+        self._nb_eval_episode = eval_episodes
         self._eval_step = 0
         self._eval_episode = 0
         self._use_next_speed = use_next_speed
@@ -92,7 +92,7 @@ class BCTrainer(object):
         print("\nEvaluating...")
         total_reward = 0
         self._actor.eval_mode()
-        for e in range(self._eval_episode):
+        for e in range(self._nb_eval_episode):
             obs = self._env.reset()
             episode_reward = 0
             done = False
@@ -126,7 +126,7 @@ class BCTrainer(object):
             print(f"\nEval episode {e}: {episode_reward:.2f}")
             total_reward += episode_reward
 
-        avg_reward = total_reward / self._eval_episode
+        avg_reward = total_reward / self._nb_eval_episode
         print(f"Avg reward: {avg_reward:.2f}")
         if self._wandb:
             wandb.log({
