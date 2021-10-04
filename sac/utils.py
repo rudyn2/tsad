@@ -108,7 +108,7 @@ def to_np(t):
         return t.cpu().detach().numpy()
 
 
-def calc_reward(metadata: dict, reward_weights: tuple, speed_red: float = 0.75, desired_speed: float = 6,
+def calc_reward(metadata: dict, speed_red: float = 0.75, desired_speed: float = 6,
                 ) -> float:
     steer = metadata['control']['steer']
     command = metadata['command']
@@ -135,4 +135,4 @@ def calc_reward(metadata: dict, reward_weights: tuple, speed_red: float = 0.75, 
 
     # distance to center
     r_dist = - distance / 2
-    return reward_weights[0] * r_a + reward_weights[1] * r_c + reward_weights[2] * r_dist
+    return r_a + r_c + r_dist

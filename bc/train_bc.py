@@ -5,11 +5,14 @@ import time
 import numpy as np
 import torch
 import wandb
+from typing import Union
 from gym_carla.envs.carla_pid_env import CarlaPidEnv
+from gym_carla.envs.carla_env import CarlaEnv
 from torch.utils.data import DataLoader
 
+from agents.agent import MultiTaskAgent
+from .bc_agent import BCStochasticAgent, BCDeterministicAgent
 from models.carlaAffordancesDataset import AffordancesDataset, HLCAffordanceDataset
-from agent import BCStochasticAgent, MultiTaskAgent, BCDeterministicAgent
 
 HLC_TO_NUMBER = {
     'RIGHT': 0,
@@ -17,6 +20,7 @@ HLC_TO_NUMBER = {
     'STRAIGHT': 2,
     'LANEFOLLOW': 3
 }
+
 
 def get_number_order(num):
     order = 0
@@ -35,18 +39,20 @@ def to_np(t):
         return t.cpu().detach().numpy()
 
 
-def collate_fn(samples: list, use_next_speed: bool = False):
-    """
-    Returns a dictionary with grouped samples. Each sample is a tuple which comes from the dataset __getitem__.
-    """
-    obs, act, next_speed = [], [], []
-    for t in samples:
-        obs.append(dict(encoding=t[0]))
-        # target_speed, steer
-        act.append(np.array([t[2], t[1][2]]))  # t[2] = speed, t[1] = control
-        if use_next_speed:
-            next_speed.append(t[3])
-    return obs, act, next_speed
+def get_collate_fn(act_mode: str):
+    def collate_fn(samples: list) -> (dict, dict):
+        """
+        Returns a dictionary with grouped samples. Each sample is a tuple which comes from the dataset __getitem__.
+        """
+        obs, act = [], []
+        for t in samples:
+            obs.append(dict(encoding=t[0]))
+            if act_mode == "pid":
+                act.append(np.array([t[2], t[1][2]]))  # t[2] = speed, t[1] = control
+            else:
+                act.append(t[1])
+        return obs, act
+    return collate_fn
 
 
 class BCTrainer(object):
@@ -57,7 +63,8 @@ class BCTrainer(object):
     def __init__(self,
                  actor: MultiTaskAgent,
                  dataset: AffordancesDataset,
-                 env: CarlaPidEnv,
+                 env: Union[CarlaPidEnv, CarlaEnv],
+                 action_space: str = "pid",
                  batch_size: int = 128,
                  epochs: int = 100,
                  eval_frequency: int = 10,
@@ -79,12 +86,13 @@ class BCTrainer(object):
         self._use_next_speed = use_next_speed
 
         self._batch_size = batch_size
-        self.__hlc_to_train = [3]
+        self.__hlc_to_train = [0, 1, 2, 3]
 
         if dataset:
+            act_collate_fn = get_collate_fn(action_space)
             self._train_loaders = {hlc: DataLoader(HLCAffordanceDataset(self._dataset, hlc=hlc, use_next_speed=use_next_speed),
-                                               batch_size=self._batch_size, collate_fn=collate_fn,
-                                               shuffle=True) for hlc in self.__hlc_to_train}
+                                                   batch_size=self._batch_size, collate_fn=act_collate_fn,
+                                                   shuffle=True) for hlc in self.__hlc_to_train}
         self.mse = torch.nn.MSELoss()
         self._device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -98,14 +106,15 @@ class BCTrainer(object):
             done = False
             while not done:
                 start = time.time()
-                action = self._actor.act_single(obs, task=obs["hlc"]-1)
+                action = self._actor.act_single(obs, task=obs["hlc"] - 1)
                 speed = np.linalg.norm(obs["speed"])
                 obs, rew, done, _ = self._env.step(action=action)
                 episode_reward += rew
 
                 fps = 1 / (time.time() - start)
+                action_str = ("{:.2f}, "*len(action)).format(*action)
                 sys.stdout.write("\r")
-                sys.stdout.write(f"fps={fps:.2f} speed={speed:.2f} rew={rew:.2f}")
+                sys.stdout.write(f"fps={fps:.2f} action={action_str} speed={speed:.2f} rew={rew:.2f}")
                 sys.stdout.flush()
 
                 if self._wandb:
@@ -138,7 +147,7 @@ class BCTrainer(object):
         Performs open-loop evaluation in the given dataset.
         """
         self._actor.eval_mode()
-        print("\n" + "-"*50)
+        print("\n" + "-" * 50)
         print("Open loop evaluation:")
         for hlc in self.__hlc_to_train:
             hlc_loader = self._train_loaders[hlc]
@@ -176,15 +185,16 @@ class BCTrainer(object):
 
                     sys.stdout.write("\r")
                     sys.stdout.write(
-                        f"Epoch={str(e).zfill(get_number_order(self._epochs))}(hlc={hlc}) [{str(i).zfill(get_number_order(len(hlc_loader)))}/{len(hlc_loader)}] bc_loss={bc_loss:.5f}")
+                        f"Epoch={str(e).zfill(get_number_order(self._epochs))}(hlc={hlc}) "
+                        f"{str(i).zfill(get_number_order(len(hlc_loader)))}/{len(hlc_loader)}] bc_loss={bc_loss:.5f}")
                     sys.stdout.flush()
             print("")
-            if e % self._eval_frequency == 0:
+            if self._env and e % self._eval_frequency == 0:
                 self.eval()
                 self._actor.save()
             if e % self._open_loop_eval_frequency == 0:
                 self.open_loop_eval()
-            
+
 
 
 if __name__ == '__main__':
@@ -198,7 +208,10 @@ if __name__ == '__main__':
     parser.add_argument('-ve', '--vehicles', default=100, type=int,
                         help="number of vehicles to spawn in the simulation")
     parser.add_argument('-wa', '--walkers', default=0, type=int, help="number of walkers to spawn in the simulation")
-    parser.add_argument('--eval-frequency', default=50, type=int)
+    parser.add_argument('--act-mode', default="raw", type=str, help="Action space. 'raw': raw actions (throttle, brake,"
+                                                                    "steer), 'pid': (target_speed, steer)")
+    parser.add_argument('--eval-frequency', default=50, type=int, help="Closed-loop evaluation frequency."
+                                                                       "If -1, it is omitted.")
     parser.add_argument('--open-loop-eval-frequency', default=20, type=int)
     parser.add_argument('--epochs', default=15, type=int)
     parser.add_argument('--wandb', action='store_true')
@@ -210,13 +223,13 @@ if __name__ == '__main__':
     if args.wandb:
         wandb.init(project='tsad', entity='autonomous-driving', name='bc-train')
 
-    env = CarlaPidEnv({
+    params = {
         # carla connection parameters+
         'host': args.host,
         'port': args.port,  # connection port
         'town': 'Town01',  # which town to simulate
         'traffic_manager_port': args.tm_port,
-    
+
         # simulation parameters
         'verbose': False,
         'vehicles': args.vehicles,  # number of vehicles in the simulation
@@ -228,18 +241,24 @@ if __name__ == '__main__':
         'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
         'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
         'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
-        'max_time_episode': 1000,  # maximum timesteps per episode
+        'max_time_episode': 500,  # maximum timesteps per episode
         'max_waypt': 12,  # maximum number of waypoints
         'd_behind': 12,  # distance behind the ego vehicle (meter)
         'out_lane_thres': 2.0,  # threshold for out of lane
         'desired_speed': 6,  # desired speed (m/s)
         'speed_reduction_at_intersection': 0.75,
         'max_ego_spawn_times': 200,  # maximum times to spawn ego vehicle
-    })
+    }
+    env = None
+    if args.eval_frequency > 0:
+        env = CarlaPidEnv(params) if args.act_mode == "pid" else CarlaEnv(params)
 
-    agent = BCStochasticAgent(input_size=15, hidden_dim=1024, action_dim=2, log_std_bounds=(-2, 5), checkpoint=args.checkpoint, next_speed=args.next_speed)
+    action_dim = 2 if args.act_mode == "pid" else 3
+    agent = BCStochasticAgent(input_size=15, hidden_dim=512, action_dim=action_dim, log_std_bounds=(-2, 5),
+                              checkpoint=args.checkpoint, next_speed=args.next_speed)
     dataset = AffordancesDataset(args.data)
     trainer = BCTrainer(agent, dataset, env,
+                        action_space=args.act_mode,
                         use_wandb=args.wandb,
                         epochs=args.epochs,
                         eval_frequency=args.eval_frequency,

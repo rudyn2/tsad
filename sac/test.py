@@ -3,14 +3,11 @@ import warnings
 import wandb
 import torch
 from gym_carla.envs.carla_env import CarlaEnv
-from models.ADEncoder import ADEncoder
-from models.TemporalEncoder import SequenceRNNEncoder
-from sac.agent.sac import SACAgent
-from sac.agent.actor import DiagGaussianActor
-from sac.agent.critic import DoubleQCritic
+from sac.sac import SACAgent
+from sac.actor import DiagGaussianActor
+from sac.critic import DoubleQCritic
 from sac.trainer import SACTrainer
 from models.carla_wrapper import EncodeWrapper
-from sac.replay_buffer import MixedReplayBuffer
 import argparse
 import traceback
 

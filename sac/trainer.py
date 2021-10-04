@@ -4,14 +4,16 @@ import time
 import numpy as np
 import wandb
 
-import cv2
 import torch
 
 import sac.utils as utils
-from models.carla_wrapper import EncodeWrapper
-from replay_buffer import MixedReplayBuffer
-from sac.agent.sac import SACAgent
 from sac.rl_logger import RLLogger
+from typing import Dict, Union
+from torch.utils.data import DataLoader
+from sac.replay_buffer import OnlineReplayBuffer
+from gym_carla.envs.carla_env import CarlaEnv
+from gym_carla.envs.carla_pid_env import CarlaPidEnv
+from sac.sac_agent import SACAgent
 
 
 ROAD_OPTION_TO_NAME = {
@@ -40,10 +42,12 @@ def action_proxy(act: np.ndarray) -> list:
 
 class SACTrainer(object):
     def __init__(self,
-                 env: EncodeWrapper,
+                 env: Union[CarlaEnv, CarlaPidEnv],
                  agent: SACAgent,
-                 buffer: MixedReplayBuffer,
+                 buffer: OnlineReplayBuffer,
+                 dataloaders: Dict[str, DataLoader],
                  log_eval=False,
+                 wandb: bool = False,
                  **kwargs):
         self.work_dir = os.getcwd()
         print(f'workspace: {self.work_dir}')
@@ -55,7 +59,9 @@ class SACTrainer(object):
         self.num_train_steps = kwargs["num_train_steps"]
         self.num_seed_steps = kwargs["num_seed_steps"]
         self.eval_frequency = kwargs["eval_frequency"]
+        self.bc_loaders = dataloaders
 
+        self.wandb = wandb
         self.env = env
         self.agent = agent
         self.replay_buffer = buffer
@@ -68,26 +74,24 @@ class SACTrainer(object):
     def evaluate(self):
         average_episode_reward = 0
         steps = 0
-        for episode in range(self.num_eval_episodes):
-            duration = 0
-            obs = self.env.reset()
-            self.agent.reset()
-            done = False
-            episode_reward = 0
-            while not done:
-                with utils.eval_mode(self.agent):
+        with utils.eval_mode(self.agent):
+            for episode in range(self.num_eval_episodes):
+                duration = 0
+                obs = self.env.reset()
+                done = False
+                episode_reward = 0
+                while not done:
                     action = self.agent.act(obs, sample=False)
-                obs, reward, done, _ = self.env.step(action_proxy(action))
-                if self.log_eval:
-                    wandb.log({f"instant/action/{name}": value for name, value in zip(["throttle", "brake", "steer"],
-                                                                              action_proxy(action))})
-                    wandb.log({"instant/reward": reward})
-                    wandb.log({"eval/step": steps})
-                episode_reward += reward
-                steps += 1
-                duration += 1
+                    obs, reward, done, _ = self.env.step(action)
+                    if self.log_eval and self.wandb:
+                        wandb.log({f"instant/action/action_{i}": value for i, value in enumerate(action)})
+                        wandb.log({"instant/reward": reward})
+                        wandb.log({"eval/step": steps})
+                    episode_reward += reward
+                    steps += 1
+                    duration += 1
 
-            if self.log_eval:
+            if self.log_eval and self.wandb:
                 wandb.log({'eval/episode': episode, 'eval/episode_reward': episode_reward, 'eval/duration': duration})
             average_episode_reward += episode_reward
         average_episode_reward /= self.num_eval_episodes
@@ -97,35 +101,35 @@ class SACTrainer(object):
             self.best_average_episode_reward = average_episode_reward
             self.agent.save(self.work_dir)
 
-        wandb.log({'eval/episode_reward': average_episode_reward})
+        if self.wandb:
+            wandb.log({'eval/episode_reward': average_episode_reward})
 
     def run(self):
         episode, episode_reward, done, episode_step = 0, 0, 0, True
         obs = self.env.reset()
         start_time = time.time()
-        self.agent.train()
+        self.agent.train(True)
         while self.step < self.num_train_steps:
             if done:
-                if self.step > 0:
+                if self.step > 0 and self.wandb:
                     wandb.log({'train/duration': time.time() - start_time})
                     start_time = time.time()
 
                 # evaluate agent periodically
                 if self.step > 0 and episode % self.eval_frequency == 0:
-                    wandb.log({'eval/episode': episode})
                     print("\nEvaluating...")
                     self.evaluate()
                     print("Done!")
 
-                wandb.log({'train/episode_reward': episode_reward})
+                if self.wandb:
+                    wandb.log({'train/episode_reward': episode_reward,
+                               'train/episode': episode})
 
                 print("\nResetting")
                 obs = self.env.reset()
-                self.agent.reset()
                 episode_reward = 0
                 episode_step = 0
                 episode += 1
-                wandb.log({'train/episode': episode})
 
             # sample action for data collection
             if self.step < self.num_seed_steps:
@@ -134,11 +138,10 @@ class SACTrainer(object):
                 with utils.eval_mode(self.agent):
                     action = self.agent.act(obs, sample=True)
 
-            # AGENT ACTION DIM PROXY: 2 -> 3
-            action = action_proxy(action)
-            wandb.log({f"instant/action/{name}": value for name, value in zip(["throttle", "brake", "steer"],
-                                                                              action)})
-            wandb.log({"instant/speed": np.linalg.norm(obs["speed"])})
+            if self.wandb:
+                wandb.log({f"instant/action/{name}": value for name, value in zip(["throttle", "brake", "steer"],
+                                                                                  action)})
+                wandb.log({"instant/speed": np.linalg.norm(obs["speed"])})
 
             # run training update
             if self.step >= self.num_seed_steps:
@@ -151,7 +154,10 @@ class SACTrainer(object):
             next_obs, reward, done, _ = self.env.step(action)
             not_done = 1 - float(done)
             episode_reward += reward
-            wandb.log({"instant/reward": reward})
+
+            if self.wandb:
+                wandb.log({"instant/reward": reward,
+                           "rl_step": self.step})
 
             self.replay_buffer.add(obs, action, reward, next_obs, not_done)
 
@@ -164,8 +170,7 @@ class SACTrainer(object):
                             f"{'k' if self.step > 1000 else ''}/"
                             f"{self.num_train_steps/1000:.0f}k), "
                             f"[{episode}:{episode_step}:{ROAD_OPTION_TO_NAME[obs['hlc']]}]| "
-                            f"rew={reward:.2f}, acc={action[0]:.3f}, brake={action[1]:.3f} "
-                            f"steer={action[2]:.3f}, done={done}")
+                            f"rew={reward:.2f}")
 
             sys.stdout.write("\r")
             sys.stdout.write(f"Training step: {self.step}/{self.num_train_steps}"
@@ -175,5 +180,4 @@ class SACTrainer(object):
         # save last agent
         self.agent.save(self.work_dir, tag="last")
         self.env.reset()
-        cv2.destroyAllWindows()
         self.logger.close()
