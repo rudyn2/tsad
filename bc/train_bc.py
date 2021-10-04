@@ -14,6 +14,7 @@ from agents.agent import MultiTaskAgent
 from bc_agent import BCStochasticAgent, BCDeterministicAgent
 from models.carlaAffordancesDataset import AffordancesDataset, HLCAffordanceDataset
 
+V_MAX = 15
 HLC_TO_NUMBER = {
     'RIGHT': 0,
     'LEFT': 1,
@@ -48,7 +49,8 @@ def get_collate_fn(act_mode: str):
         for t in samples:
             obs.append(dict(encoding=t[0]))
             if act_mode == "pid":
-                act.append(np.array([t[2], t[1][2]]))  # t[2] = speed, t[1] = control (throttle, brake, steer)
+                norm_speed = 2 * t[2] / V_MAX - 1
+                act.append(np.array([norm_speed, t[1][2]]))  # t[2] = speed, t[1] = control (throttle, brake, steer)
             else:
                 act.append(t[1])
         return obs, act
@@ -107,6 +109,7 @@ class BCTrainer(object):
             while not done:
                 start = time.time()
                 action = self._actor.act_single(obs, task=obs["hlc"] - 1)
+                action[0] = (V_MAX / 2) * (action[0] + 1)   # denormalize the speed
                 speed = np.linalg.norm(obs["speed"])
                 obs, rew, done, _ = self._env.step(action=action)
                 episode_reward += rew
