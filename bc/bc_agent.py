@@ -50,14 +50,12 @@ class BCStochasticAgent(MultiTaskActor):
             action, _ = self._actor[str(task)].get_distribution(encodings)  # (1, 2)
         return list(action.squeeze(dim=0).cpu().numpy())                    # [target_speed, steer]
 
-    def supervised_update(self, obs: list, act: list, task: int, speed = None) -> float:
-        encoding = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0).float()
-        act = torch.tensor(act, device=self._device).float()
+    def get_supervised_loss(self, obs: torch.Tensor, act: torch.Tensor, task: int, speed=None) -> float:
         if speed:
-            pred_act, _, pred_speed = self._actor[str(task)].get_distribution_with_speed(encoding)
+            pred_act, _, pred_speed = self._actor[str(task)].get_distribution_with_speed(obs)
             loss = self._mse(pred_act, act) + self._mse(pred_speed, speed)
         else:
-            pred_act, _ = self._actor[str(task)].get_distribution(encoding)
+            pred_act, _ = self._actor[str(task)].get_distribution(obs)
             loss = self._mse(pred_act, act)
         self._actor_optimizer.zero_grad()
         loss.backward()
@@ -101,10 +99,9 @@ class BCDeterministicAgent(MultiTaskActor):
             pred_act = self._actor(obs, task)
             return pred_act
 
-    def supervised_update(self, obs: list, act: list, task: int) -> float:
+    def get_supervised_loss(self, obs: torch.Tensor, act: torch.Tensor, task: int) -> float:
         pred_act = self._actor(obs, task)
-        act_e_hlc = torch.tensor(np.stack(act), device=self._device).float()
-        mse_loss = self._actor_loss(pred_act, act_e_hlc)
+        mse_loss = self._actor_loss(pred_act, act)
         self._actor_optimizer.zero_grad()
         mse_loss.backward()
         self._actor_optimizer.step()

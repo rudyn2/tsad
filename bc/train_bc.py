@@ -11,7 +11,7 @@ from gym_carla.envs.carla_env import CarlaEnv
 from torch.utils.data import DataLoader
 
 from agents.agent import MultiTaskAgent
-from .bc_agent import BCStochasticAgent, BCDeterministicAgent
+from bc_agent import BCStochasticAgent, BCDeterministicAgent
 from models.carlaAffordancesDataset import AffordancesDataset, HLCAffordanceDataset
 
 HLC_TO_NUMBER = {
@@ -48,7 +48,7 @@ def get_collate_fn(act_mode: str):
         for t in samples:
             obs.append(dict(encoding=t[0]))
             if act_mode == "pid":
-                act.append(np.array([t[2], t[1][2]]))  # t[2] = speed, t[1] = control
+                act.append(np.array([t[2], t[1][2]]))  # t[2] = speed, t[1] = control (throttle, brake, steer)
             else:
                 act.append(t[1])
         return obs, act
@@ -61,7 +61,7 @@ class BCTrainer(object):
     """
 
     def __init__(self,
-                 actor: MultiTaskAgent,
+                 actor: Union[BCStochasticAgent, BCDeterministicAgent],
                  dataset: AffordancesDataset,
                  env: Union[CarlaPidEnv, CarlaEnv],
                  action_space: str = "pid",
@@ -172,11 +172,11 @@ class BCTrainer(object):
             for hlc in self.__hlc_to_train:
                 hlc_loader = self._train_loaders[hlc]
 
-                for i, (obs, act, next_speed) in enumerate(hlc_loader):
-                    if self._use_next_speed:
-                        bc_loss = self._actor.update(obs, act, hlc, next_speed)
-                    else:
-                        bc_loss = self._actor.update(obs, act, hlc)
+                for i, (obs, act) in enumerate(hlc_loader):
+                    obs = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0).float()
+                    act = torch.tensor(act, device=self._device).float()
+
+                    bc_loss = self._actor.get_supervised_loss(obs, act, hlc)
 
                     if self._wandb:
                         wandb.log({f'train_actor/bc_loss_{hlc}': bc_loss,
@@ -194,7 +194,6 @@ class BCTrainer(object):
                 self._actor.save()
             if e % self._open_loop_eval_frequency == 0:
                 self.open_loop_eval()
-
 
 
 if __name__ == '__main__':
@@ -238,8 +237,7 @@ if __name__ == '__main__':
         'max_past_step': 1,  # the number of past steps to draw
         'dt': 0.025,  # time interval between two frames
         'reward_weights': [0.3, 0.3, 0.3],
-        'continuous_accel_range': [-1.0, 1.0],  # continuous acceleration range
-        'continuous_steer_range': [-1.0, 1.0],  # continuous steering angle range
+
         'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
         'max_time_episode': 500,  # maximum timesteps per episode
         'max_waypt': 12,  # maximum number of waypoints
@@ -251,7 +249,19 @@ if __name__ == '__main__':
     }
     env = None
     if args.eval_frequency > 0:
-        env = CarlaPidEnv(params) if args.act_mode == "pid" else CarlaEnv(params)
+        if args.act_mode == "pid":
+            params.update({
+                'continuous_speed_range': [0.0, 6.0],
+                'continuous_steer_range': [-1.0, 1.0],
+            })
+            env = CarlaPidEnv(params)
+        else:
+            params.update({
+                'continuous_throttle_range': [0.0, 1.0],
+                'continuous_brake_range': [0.0, 1.0],
+                'continuous_steer_range': [-1.0, 1.0],
+            })
+            env = CarlaEnv(params)
 
     action_dim = 2 if args.act_mode == "pid" else 3
     agent = BCStochasticAgent(input_size=15, hidden_dim=512, action_dim=action_dim, log_std_bounds=(-2, 5),
