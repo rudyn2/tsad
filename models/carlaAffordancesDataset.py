@@ -97,19 +97,14 @@ class HLCAffordanceDataset(Dataset):
     def __init__(self,
                  affordance_dataset: AffordancesDataset,
                  hlc: int,
-                 normalizer=None,
                  use_next_speed: bool = False,
                  ):
         self._dataset = affordance_dataset
         self._hlc = hlc
         self._use_next_speed = use_next_speed
-        self._normalizer = normalizer
 
     def __getitem__(self, index: int):
-        affordances, control, speed, command = self._dataset.get_item(index, self._hlc, self._use_next_speed)
-        if self._normalizer:
-            control = self._normalizer(control)
-        return affordances, control,  speed, command
+        return self._dataset.get_item(index, self._hlc, self._use_next_speed)
 
     def __len__(self):
         return len(self._dataset.timestamps_lists[self._hlc])

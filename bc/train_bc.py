@@ -41,7 +41,7 @@ def to_np(t):
         return t.cpu().detach().numpy()
 
 
-def get_collate_fn(act_mode: str):
+def get_collate_fn(act_mode: str, normalize: bool = True):
     def collate_fn(samples: list) -> (dict, dict):
         """
         Returns a dictionary with grouped samples. Each sample is a tuple which comes from the dataset __getitem__.
@@ -50,10 +50,16 @@ def get_collate_fn(act_mode: str):
         for t in samples:
             obs.append(dict(encoding=t[0]))
             if act_mode == "pid":
-                norm_speed = 2 * t[2] / V_MAX - 1
-                act.append(np.array([norm_speed, t[1][2]]))  # t[2] = speed, t[1] = control (throttle, brake, steer)
+                if normalize:
+                    # t[2] = speed, t[1] = control (throttle, brake, steer)
+                    act.append(np.array(normalize_pid_action([t[2], t[1][2]])))
+                else:
+                    act.append(np.array([t[2], t[1][2]]))
             else:
-                act.append(t[1])
+                if normalize:
+                    act.append(np.array(normalize_action(t[1])))
+                else:
+                    act.append(t[1])
         return obs, act
     return collate_fn
 
@@ -101,12 +107,10 @@ class BCTrainer(object):
         self.__hlc_to_train = [0, 1, 2, 3]
 
         if dataset:
-            act_collate_fn = get_collate_fn(action_space)
-            normalizer = get_normalizer(action_space)
+            act_collate_fn = get_collate_fn(action_space, normalize=True)
             self._train_loaders = {hlc: DataLoader(HLCAffordanceDataset(self._dataset,
                                                                         hlc=hlc,
-                                                                        use_next_speed=use_next_speed,
-                                                                        normalizer=normalizer),
+                                                                        use_next_speed=use_next_speed),
                                                    batch_size=self._batch_size, collate_fn=act_collate_fn,
                                                    shuffle=True) for hlc in self.__hlc_to_train}
         self.mse = torch.nn.MSELoss()
@@ -123,7 +127,6 @@ class BCTrainer(object):
             while not done:
                 start = time.time()
                 action = self._actor.act_single(obs, task=obs["hlc"] - 1)
-                action[0] = (V_MAX / 2) * (action[0] + 1)   # denormalize the speed
                 speed = np.linalg.norm(obs["speed"])
                 obs, rew, done, _ = self._env.step(action=action)
                 episode_reward += rew
@@ -257,6 +260,7 @@ if __name__ == '__main__':
         'dt': 0.025,  # time interval between two frames
         'reward_weights': [0.3, 0.3, 0.3],
 
+        'normalized_input': True,
         'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
         'max_time_episode': 500,  # maximum timesteps per episode
         'max_waypt': 12,  # maximum number of waypoints
