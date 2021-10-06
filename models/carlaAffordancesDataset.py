@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 from tqdm import tqdm
 from torch.utils.data import Dataset
-import torch
+from bc.utils import normalize_action
 from collections import defaultdict
 
 
@@ -97,20 +97,26 @@ class HLCAffordanceDataset(Dataset):
     def __init__(self,
                  affordance_dataset: AffordancesDataset,
                  hlc: int,
-                 use_next_speed: bool = False):
+                 normalizer=None,
+                 use_next_speed: bool = False,
+                 ):
         self._dataset = affordance_dataset
         self._hlc = hlc
         self._use_next_speed = use_next_speed
+        self._normalizer = normalizer
 
     def __getitem__(self, index: int):
-        return self._dataset.get_item(index, self._hlc, self._use_next_speed)
+        affordances, control, speed, command = self._dataset.get_item(index, self._hlc, self._use_next_speed)
+        if self._normalizer:
+            control = self._normalizer(control)
+        return affordances, control,  speed, command
 
     def __len__(self):
         return len(self._dataset.timestamps_lists[self._hlc])
 
 
 if __name__ == "__main__":
-    path = '/home/johnny/Escritorio/data'
+    path = '/home/rudy/Documents/tsad/data'
     dataset = AffordancesDataset(path)
     hlc_dataset = HLCAffordanceDataset(dataset, hlc=3)
     item = hlc_dataset[5]

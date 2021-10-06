@@ -9,6 +9,7 @@ from typing import Union
 from gym_carla.envs.carla_pid_env import CarlaPidEnv
 from gym_carla.envs.carla_env import CarlaEnv
 from torch.utils.data import DataLoader
+from bc.utils import normalize_action, normalize_pid_action
 
 from agents.agent import MultiTaskAgent
 from bc_agent import BCStochasticAgent, BCDeterministicAgent
@@ -57,6 +58,15 @@ def get_collate_fn(act_mode: str):
     return collate_fn
 
 
+def get_normalizer(act_mode: str):
+    if act_mode == "pid":
+        return lambda x: np.array(normalize_action(x))
+    elif act_mode == "raw":
+        return lambda x: np.array(normalize_pid_action(x))
+    else:
+        raise ValueError("Act mode not allowed.")
+
+
 class BCTrainer(object):
     """
     Auxiliary class to train a policy using Behavioral Cloning over affordances trajectories.
@@ -92,7 +102,11 @@ class BCTrainer(object):
 
         if dataset:
             act_collate_fn = get_collate_fn(action_space)
-            self._train_loaders = {hlc: DataLoader(HLCAffordanceDataset(self._dataset, hlc=hlc, use_next_speed=use_next_speed),
+            normalizer = get_normalizer(action_space)
+            self._train_loaders = {hlc: DataLoader(HLCAffordanceDataset(self._dataset,
+                                                                        hlc=hlc,
+                                                                        use_next_speed=use_next_speed,
+                                                                        normalizer=normalizer),
                                                    batch_size=self._batch_size, collate_fn=act_collate_fn,
                                                    shuffle=True) for hlc in self.__hlc_to_train}
         self.mse = torch.nn.MSELoss()
