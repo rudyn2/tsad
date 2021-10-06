@@ -176,9 +176,11 @@ class BCTrainer(object):
                 hlc_loader = self._train_loaders[hlc]
 
                 for i, (obs, act) in enumerate(hlc_loader):
+                    # parse to torch tensors
                     obs = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0).float()
                     act = torch.tensor(act, device=self._device).float()
 
+                    # update using bc and get the loss
                     bc_loss = self._actor.get_supervised_loss(obs, act, hlc)
 
                     if self._wandb:
