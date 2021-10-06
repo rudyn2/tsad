@@ -12,7 +12,7 @@ def mlp(sizes, activation, output_activation=nn.Identity):
     layers = []
     for j in range(len(sizes)-1):
         act = activation if j < len(sizes)-2 else output_activation
-        layers += [nn.Linear(sizes[j], sizes[j+1]), act()]
+        layers += [nn.Linear(sizes[j], sizes[j+1]), nn.BatchNorm1d(sizes[j+1]), act()]
     return nn.Sequential(*layers)
 
 
@@ -23,7 +23,7 @@ class SquashedGaussianMLP(nn.Module):
 
     def __init__(self, obs_dim: int, act_dim: int, hidden_sizes: tuple, activation: nn.Module, act_limit: int = 1):
         super().__init__()
-        self.net = mlp([obs_dim] + list(hidden_sizes), activation)
+        self.net = mlp([obs_dim] + list(hidden_sizes), activation, output_activation=nn.Tanh)
         self.mu_layer = nn.Linear(hidden_sizes[-1], act_dim)
         self.log_std_layer = nn.Linear(hidden_sizes[-1], act_dim)
         self.speed_layer = nn.Linear(hidden_sizes[-1], 1)

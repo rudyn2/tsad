@@ -41,7 +41,7 @@ def to_np(t):
         return t.cpu().detach().numpy()
 
 
-def get_collate_fn(act_mode: str, normalize: bool = True):
+def get_collate_fn(act_mode: str):
     def collate_fn(samples: list) -> (dict, dict):
         """
         Returns a dictionary with grouped samples. Each sample is a tuple which comes from the dataset __getitem__.
@@ -50,16 +50,9 @@ def get_collate_fn(act_mode: str, normalize: bool = True):
         for t in samples:
             obs.append(dict(encoding=t[0]))
             if act_mode == "pid":
-                if normalize:
-                    # t[2] = speed, t[1] = control (throttle, brake, steer)
-                    act.append(np.array(normalize_pid_action([t[2], t[1][2]])))
-                else:
-                    act.append(np.array([t[2], t[1][2]]))
+                act.append(np.array([t[2], t[1][2]]))
             else:
-                if normalize:
-                    act.append(np.array(normalize_action(t[1])))
-                else:
-                    act.append(t[1])
+                act.append(t[1])
         return obs, act
     return collate_fn
 
@@ -107,7 +100,7 @@ class BCTrainer(object):
         self.__hlc_to_train = [0, 1, 2, 3]
 
         if dataset:
-            act_collate_fn = get_collate_fn(action_space, normalize=True)
+            act_collate_fn = get_collate_fn(action_space)
             self._train_loaders = {hlc: DataLoader(HLCAffordanceDataset(self._dataset,
                                                                         hlc=hlc,
                                                                         use_next_speed=use_next_speed),
@@ -132,7 +125,7 @@ class BCTrainer(object):
                 episode_reward += rew
 
                 fps = 1 / (time.time() - start)
-                action_str = ("{:.2f}, "*len(action)).format(*action)
+                action_str = ("{:.4f}, "*len(action)).format(*action)
                 sys.stdout.write("\r")
                 sys.stdout.write(f"fps={fps:.2f} action={action_str} speed={speed:.2f} rew={rew:.2f}")
                 sys.stdout.flush()
@@ -208,7 +201,7 @@ class BCTrainer(object):
                     sys.stdout.write("\r")
                     sys.stdout.write(
                         f"Epoch={str(e).zfill(get_number_order(self._epochs))}(hlc={hlc}) "
-                        f"{str(i).zfill(get_number_order(len(hlc_loader)))}/{len(hlc_loader)}] bc_loss={bc_loss:.5f}")
+                        f"{str(i).zfill(get_number_order(len(hlc_loader)))}/{len(hlc_loader)}] bc_loss={bc_loss:.8f}")
                     sys.stdout.flush()
             print("")
             if self._env and e % self._eval_frequency == 0:

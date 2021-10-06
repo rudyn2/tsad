@@ -33,7 +33,7 @@ class SACActor(MultiTaskActor, nn.Module):
     def act_batch(self, obs: torch.Tensor, task: int) -> Union[list, torch.Tensor]:
         pass
 
-    def act_single(self, obs: torch.Tensor, sample: bool, task: int) -> list:
+    def act_single(self, obs: torch.Tensor, task: int) -> list:
         pi_distribution = self._actors[str(task)].get_distribution(obs)
         if sample:
             pi_action = pi_distribution.rsample()

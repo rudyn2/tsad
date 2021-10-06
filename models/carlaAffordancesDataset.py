@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 from tqdm import tqdm
 from torch.utils.data import Dataset
-from bc.utils import normalize_action
+import matplotlib.pyplot as plt
 from collections import defaultdict
 
 
@@ -110,9 +110,20 @@ class HLCAffordanceDataset(Dataset):
         return len(self._dataset.timestamps_lists[self._hlc])
 
 
+def plot_steer_histogram(dataset: HLCAffordanceDataset):
+    fig, axs = plt.subplots(2, 2, figsize=(12, 12))
+    for hlc, ax in zip(range(4), axs.reshape(-1)):
+        hlc_dataset = HLCAffordanceDataset(dataset, hlc)
+        steer_values = []
+        for index in range(len(hlc_dataset)):
+            steer_values.append(hlc_dataset[index][1][2])
+        ax.hist(steer_values, bins=40, range=(-1, 1), density=True)
+        ax.set_title(f"Histogram of steering values (HLC={hlc})")
+        ax.set_xlabel("Steering")
+    plt.show()
+
+
 if __name__ == "__main__":
     path = '/home/rudy/Documents/tsad/data'
     dataset = AffordancesDataset(path)
-    hlc_dataset = HLCAffordanceDataset(dataset, hlc=3)
-    item = hlc_dataset[5]
-    print(item)
+    plot_steer_histogram(dataset)
