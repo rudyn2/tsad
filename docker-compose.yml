@@ -15,7 +15,7 @@ services:
     links:
         - "server:carla"
     runtime: nvidia
-    command: python ../bc/train_bc.py --data /home/models/data/ -H carla -p 2004 --next-speed --checkpoint /home/models/data/checkpoint.pt --eval-frequency 5
+    command: python ../bc/train_bc.py --data /home/models/data2/ -H carla -p 2004 --next-speed --checkpoint /home/models/data/checkpoint.pt --eval-frequency 5
     volumes:
         - /home/johnny/Escritorio/:/home/models
     environment:

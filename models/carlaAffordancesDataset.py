@@ -6,6 +6,8 @@ from torch.utils.data import Dataset
 import matplotlib.pyplot as plt
 from collections import defaultdict
 
+from utils.utils import normalize_action, normalize_speed
+
 
 HLC_TO_NUMBER = {
         'RIGHT': 0,
@@ -54,13 +56,19 @@ class AffordancesDataset(object):
                     'timestamp': t_key,
                 })
 
-    def get_item(self, index: int, hlc: int, use_next_speed: bool = False):
+    def get_item(self, index: int, hlc: int, use_next_speed: bool = False, normalize_control: bool = False):
         timestamp = self.timestamps_lists[hlc][index]
         ep_key, t_key = timestamp['episode'], timestamp['timestamp']
 
         affordances, control, speed, command = self.unpack_data(ep_key, t_key)
+        if normalize_control:
+            control = normalize_action(control)
+            speed = normalize_speed(speed)
+        
         if use_next_speed:
             next_speed = self.get_next_speed(index, ep_key, hlc)
+            if normalize_control:
+                next_speed = normalize_speed(next_speed)
             return affordances, control, speed, command, next_speed
         return affordances, control, speed, command
     
@@ -98,13 +106,15 @@ class HLCAffordanceDataset(Dataset):
                  affordance_dataset: AffordancesDataset,
                  hlc: int,
                  use_next_speed: bool = False,
+                 normalize_control: bool = False
                  ):
         self._dataset = affordance_dataset
         self._hlc = hlc
         self._use_next_speed = use_next_speed
+        self._normalize_control = normalize_control
 
     def __getitem__(self, index: int):
-        return self._dataset.get_item(index, self._hlc, self._use_next_speed)
+        return self._dataset.get_item(index, self._hlc, self._use_next_speed, self._normalize_control)
 
     def __len__(self):
         return len(self._dataset.timestamps_lists[self._hlc])
@@ -124,6 +134,6 @@ def plot_steer_histogram(dataset: HLCAffordanceDataset):
 
 
 if __name__ == "__main__":
-    path = '/home/rudy/Documents/tsad/data'
+    path = '/home/johnny/Escritorio/data2'
     dataset = AffordancesDataset(path)
     plot_steer_histogram(dataset)

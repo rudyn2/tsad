@@ -9,9 +9,7 @@ from typing import Union
 from gym_carla.envs.carla_pid_env import CarlaPidEnv
 from gym_carla.envs.carla_env import CarlaEnv
 from torch.utils.data import DataLoader
-from bc.utils import normalize_action, normalize_pid_action
 
-from agents.agent import MultiTaskAgent
 from bc_agent import BCStochasticAgent, BCDeterministicAgent
 from models.carlaAffordancesDataset import AffordancesDataset, HLCAffordanceDataset
 
@@ -56,16 +54,6 @@ def get_collate_fn(act_mode: str):
         return obs, act
     return collate_fn
 
-
-def get_normalizer(act_mode: str):
-    if act_mode == "pid":
-        return lambda x: np.array(normalize_action(x))
-    elif act_mode == "raw":
-        return lambda x: np.array(normalize_pid_action(x))
-    else:
-        raise ValueError("Act mode not allowed.")
-
-
 class BCTrainer(object):
     """
     Auxiliary class to train a policy using Behavioral Cloning over affordances trajectories.
@@ -83,6 +71,7 @@ class BCTrainer(object):
                  eval_episodes: int = 3,
                  use_wandb: bool = False,
                  use_next_speed: bool = False,
+                 norm_actions: bool = False,
                  ):
         self._actor = actor
         self._dataset = dataset
@@ -103,7 +92,9 @@ class BCTrainer(object):
             act_collate_fn = get_collate_fn(action_space)
             self._train_loaders = {hlc: DataLoader(HLCAffordanceDataset(self._dataset,
                                                                         hlc=hlc,
-                                                                        use_next_speed=use_next_speed),
+                                                                        use_next_speed=use_next_speed,
+                                                                        normalize_control=norm_actions
+                                                                        ),
                                                    batch_size=self._batch_size, collate_fn=act_collate_fn,
                                                    shuffle=True) for hlc in self.__hlc_to_train}
         self.mse = torch.nn.MSELoss()
@@ -231,6 +222,7 @@ if __name__ == '__main__':
     parser.add_argument('--wandb', action='store_true')
     parser.add_argument('--checkpoint', default='checkpoint.pt', type=str)
     parser.add_argument('--next-speed', action='store_true', help='Whether to use next step speed head or not.')
+    parser.add_argument('--norm-actions', action='store_true', help='Whether the action are normalized or not.')
 
     args = parser.parse_args()
 
@@ -253,7 +245,7 @@ if __name__ == '__main__':
         'dt': 0.025,  # time interval between two frames
         'reward_weights': [0.3, 0.3, 0.3],
 
-        'normalized_input': True,
+        'normalized_input': args.norm_actions,
         'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
         'max_time_episode': 500,  # maximum timesteps per episode
         'max_waypt': 12,  # maximum number of waypoints
@@ -289,6 +281,7 @@ if __name__ == '__main__':
                         epochs=args.epochs,
                         eval_frequency=args.eval_frequency,
                         open_loop_eval_frequency=args.open_loop_eval_frequency,
-                        use_next_speed=args.next_speed
+                        use_next_speed=args.next_speed,
+                        norm_actions=args.norm_actions,
                         )
     trainer.run()
