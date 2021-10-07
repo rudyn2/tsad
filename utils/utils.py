@@ -55,7 +55,7 @@ def normalize_action(action: list):
         raise Exception('Wrong action dimension')
 
 def normalize_speed(speed: float):
-    return range_transformation(target_speed, input_range=INPUT_TARGET_SPEED_RANGE, output_range=TARGET_SPEED_RANGE)
+    return range_transformation(speed, input_range=INPUT_TARGET_SPEED_RANGE, output_range=TARGET_SPEED_RANGE)
 
 def unnormalize_action(action: list):
     if len(action) == 2:

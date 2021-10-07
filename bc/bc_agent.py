@@ -8,7 +8,6 @@ from torch.optim.adam import Adam
 from models.ActorCritic import Actor
 from agents.squashed_gaussian import SquashedGaussianMLP
 from agents.agent import MultiTaskActor
-from bc.utils import unnormalize_pid_action_torch
 
 
 def to_np(t):
@@ -51,7 +50,6 @@ class BCStochasticAgent(MultiTaskActor):
 
     def get_supervised_loss(self, obs: torch.Tensor, act: torch.Tensor, task: int) -> float:
         pred_act, _ = self._actor[str(task)].get_distribution(obs)
-        pred_act = unnormalize_pid_action_torch(pred_act)
         loss = self._mse(pred_act, act)
         self._actor_optimizer.zero_grad()
         loss.backward()
