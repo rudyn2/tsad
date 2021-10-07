@@ -26,7 +26,7 @@ class SquashedGaussianMLP(nn.Module):
         self.net = mlp([obs_dim] + list(hidden_sizes), activation, output_activation=nn.Tanh)
         self.mu_layer = nn.Linear(hidden_sizes[-1], act_dim)
         self.log_std_layer = nn.Linear(hidden_sizes[-1], act_dim)
-        self.speed_layer = nn.Linear(hidden_sizes[-1], 1)
+        # self.speed_layer = nn.Linear(hidden_sizes[-1], 1)
         self.act_limit = act_limit
 
     def get_distribution(self, obs) -> Normal:
@@ -37,15 +37,6 @@ class SquashedGaussianMLP(nn.Module):
         std = torch.exp(log_std)
         return mu, std
 
-    def get_distribution_with_speed(self, obs):
-        net_out = self.net(obs)
-        mu = self.mu_layer(net_out)
-        log_std = self.log_std_layer(net_out)
-        log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
-        std = torch.exp(log_std)
-        next_speed = self.speed_layer(net_out)
-        return mu, std, next_speed
-
     def forward(self, obs, deterministic=False):
         pi_distribution = self.get_distribution(obs)
         if deterministic:
@@ -54,7 +45,7 @@ class SquashedGaussianMLP(nn.Module):
         else:
             pi_action = pi_distribution.rsample()
 
-        pi_action = torch.tanh(pi_action)
+        pi_action = nn.sigmoid(pi_action)
         pi_action = self.act_limit * pi_action
 
         return pi_action
