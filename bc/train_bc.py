@@ -283,5 +283,6 @@ if __name__ == '__main__':
                         open_loop_eval_frequency=args.open_loop_eval_frequency,
                         use_next_speed=args.next_speed,
                         norm_actions=args.norm_actions,
+                        eval_episodes=1,
                         )
     trainer.run()

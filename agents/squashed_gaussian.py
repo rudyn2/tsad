@@ -24,7 +24,12 @@ class SquashedGaussianMLP(nn.Module):
     def __init__(self, obs_dim: int, act_dim: int, hidden_sizes: tuple, activation: nn.Module, act_limit: int = 1):
         super().__init__()
         self.net = mlp([obs_dim] + list(hidden_sizes), activation, output_activation=nn.Tanh)
-        self.mu_layer = nn.Linear(hidden_sizes[-1], act_dim)
+
+        self.mu_layer = nn.Sequential(
+            nn.Linear(hidden_sizes[-1], act_dim),
+            nn.Sigmoid()
+        )
+        # self.mu_layer = nn.Linear(hidden_sizes[-1], act_dim)
         self.log_std_layer = nn.Linear(hidden_sizes[-1], act_dim)
         # self.speed_layer = nn.Linear(hidden_sizes[-1], 1)
         self.act_limit = act_limit
@@ -45,7 +50,6 @@ class SquashedGaussianMLP(nn.Module):
         else:
             pi_action = pi_distribution.rsample()
 
-        pi_action = nn.sigmoid(pi_action)
         pi_action = self.act_limit * pi_action
 
         return pi_action
