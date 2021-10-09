@@ -27,7 +27,7 @@ class SquashedGaussianMLP(nn.Module):
 
         self.mu_layer = nn.Sequential(
             nn.Linear(hidden_sizes[-1], act_dim),
-            nn.Sigmoid()
+            nn.Tanh()
         )
         # self.mu_layer = nn.Linear(hidden_sizes[-1], act_dim)
         self.log_std_layer = nn.Linear(hidden_sizes[-1], act_dim)

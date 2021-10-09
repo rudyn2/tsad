@@ -6,8 +6,8 @@ from torch.utils.data import Dataset
 import matplotlib.pyplot as plt
 from collections import defaultdict
 
-from utils.utils import normalize_action, normalize_speed
-
+#from utils.utils import normalize_action, normalize_speed
+from gym_carla.envs.utils import normalize_action, normalize_speed
 
 HLC_TO_NUMBER = {
         'RIGHT': 0,
