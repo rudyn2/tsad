@@ -26,7 +26,7 @@ class BCStochasticAgent(MultiTaskActor):
             str(hlc): SquashedGaussianMLP(
                 kwargs["input_size"],
                 kwargs["action_dim"],
-                (kwargs["hidden_dim"], kwargs["hidden_dim"]),
+                (kwargs["hidden_dim"], kwargs["hidden_dim"], kwargs["hidden_dim"]),
                 nn.ReLU
             ) for hlc in range(4)
         })

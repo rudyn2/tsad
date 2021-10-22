@@ -15,7 +15,7 @@ services:
     links:
         - "server:carla"
     runtime: nvidia
-    command: python ../bc/train_bc.py --data /home/models/data/ --act-mode pid -H carla -p 2004 --checkpoint /home/models/data/checkpoint.pt --eval-frequency 5 --norm-actions
+    command: python ../bc/train_bc.py --data /home/models/data/ --act-mode pid -H carla -p 2004 --eval-frequency 5 --norm-actions
     volumes:
         - /home/johnny/Escritorio/:/home/models
     environment:

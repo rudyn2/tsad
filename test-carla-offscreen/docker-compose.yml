@@ -6,18 +6,16 @@ services:
         - "2004-2006:2004-2006"
     command: ./CarlaUE4.sh -opengl -quality-level=low -world-port=2004
     runtime: nvidia
-    volumes:
-        - /tmp/.X11-unix:/tmp/.X11-unix 
     environment:
         - NVIDIA_VISIBLE_DEVICES=all
-        - DISPLAY=$DISPLAY
+        - SDL_VIDEODRIVER=offscreen
 
   client:
     build: ../
     links:
         - "server:carla"
     runtime: nvidia
-    command: python ../bc/train_bc.py --data /home/models/data/ --act-mode pid -H carla -p 2004 --eval-frequency 1 --norm-actions
+    command: python ../bc/test_bc.py --act-mode pid -H carla -p 2004 --checkpoint /home/models/data/checkpoint.pt --epochs 5 --norm-actions
     volumes:
         - /home/johnny/Escritorio/:/home/models
     environment:
