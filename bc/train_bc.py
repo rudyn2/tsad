@@ -54,6 +54,7 @@ def get_collate_fn(act_mode: str):
         return obs, act
     return collate_fn
 
+
 class BCTrainer(object):
     """
     Auxiliary class to train a policy using Behavioral Cloning over affordances trajectories.
