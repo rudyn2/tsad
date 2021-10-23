@@ -1,4 +1,5 @@
 import json
+import random
 from pathlib import Path
 import numpy as np
 from tqdm import tqdm
@@ -55,6 +56,28 @@ class AffordancesDataset(object):
                     'episode': ep_key,
                     'timestamp': t_key,
                 })
+
+    def get_episode(self, normalize_control: bool = True):
+        """
+        Get a tuple of lists with ordered data elements from an entire episode.
+        """
+        ep_key = random.choice(list(self._data_cache.keys()))
+        timestamps = sorted(map(int, list(self._data_cache[ep_key].keys())))    # ensure time order
+        print(f"Selected episode: {ep_key} with {len(timestamps)} frames")
+        ep_aff, ep_control, ep_speed, ep_command = [], [], [], []
+        for timestamp in timestamps:
+            affordances, control, speed, command = self.unpack_data(ep_key, str(timestamp))
+
+            if normalize_control:
+                control = normalize_action(control)
+                speed = normalize_speed(speed)
+
+            ep_aff.append(affordances)
+            ep_control.append(control)
+            ep_speed.append(speed)
+            ep_command.append(command)
+
+        return ep_aff, ep_control, ep_speed, ep_command
 
     def get_item(self, index: int, hlc: int, use_next_speed: bool = False, normalize_control: bool = False):
         timestamp = self.timestamps_lists[hlc][index]
@@ -134,6 +157,7 @@ def plot_steer_histogram(dataset: HLCAffordanceDataset):
 
 
 if __name__ == "__main__":
-    path = '/home/johnny/Escritorio/data2'
+    path = '/home/rudy/Documents/tsad/data/small'
     dataset = AffordancesDataset(path)
+    ep_aff, ep_ctrl, ep_speed, ep_cmd = dataset.get_episode(normalize_control=True)
     plot_steer_histogram(dataset)

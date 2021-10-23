@@ -110,7 +110,7 @@ class BCTrainer(object):
             done = False
             while not done:
                 start = time.time()
-                action = self._actor.act_single(obs, task=obs["hlc"] - 1)
+                action = self._actor.act_single(obs, task=obs["hlc"])
                 speed = np.linalg.norm(obs["speed"])
                 obs, rew, done, _ = self._env.step(action=action)
                 episode_reward += rew
@@ -118,7 +118,7 @@ class BCTrainer(object):
                 fps = 1 / (time.time() - start)
                 action_str = ("{:.4f}, "*len(action)).format(*action)
                 sys.stdout.write("\r")
-                sys.stdout.write(f"fps={fps:.2f} action={action_str} speed={speed:.2f} rew={rew:.2f}")
+                sys.stdout.write(f"fps={fps:.2f} hlc={obs['hlc']} action={action_str} speed={speed:.2f} rew={rew:.2f}")
                 sys.stdout.flush()
 
                 if self._wandb:

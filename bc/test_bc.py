@@ -1,17 +1,11 @@
 import argparse
 
-import numpy as np
-import torch
 import wandb
 from gym_carla.envs.carla_pid_env import CarlaPidEnv
 from gym_carla.envs.carla_env import CarlaEnv
-from torch.utils.data import DataLoader
 
 from train_bc import BCTrainer
-
-from models.carlaAffordancesDataset import AffordancesDataset, HLCAffordanceDataset
-from bc_agent import BCStochasticAgent, BCDeterministicAgent
-
+from bc_agent import BCStochasticAgent
 
 
 if __name__ == '__main__':
