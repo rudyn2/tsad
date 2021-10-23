@@ -25,22 +25,28 @@ class AffordancesDataset(object):
         self._data_cache = {}
         self.timestamps_lists = defaultdict(list)       # dict of list of dict with episode-timestamp keys
         self.validation_episodes = list()               # list of episode keys
-
-        self._total_validation_episodes = 2
+        self._train_keys = list()
+        self._val_keys = list()
 
         p = Path(data_folder)
         assert(p.is_dir())
 
+        self._load_keys()
         self._metadata_files = sorted(p.glob('**/**/*.json'))
-        self._total_validation_episodes = len(self._metadata_files)
-
-        print(f"Found {len(self._metadata_files)} metadata files")
         for path in tqdm(self._metadata_files, "Reading dataset..."):
             with open(path) as f:
                 metadata = json.load(f)
                 self._push_data(metadata, path)
-        print(f"Total train timestamps: {sum([len(t_list) for t_list in self.timestamps_lists.values()])}")
-        print(f"Total validation episodes: {len(self.validation_episodes)}")
+
+        print(f"Total train episodes: {len(self._train_keys)}")
+        print(f"Total train timestamps: {self.__len__()}")
+        print(f"Total validation episodes: {len(self._val_keys)}")
+
+    def _load_keys(self):
+        with open(Path(self._data_folder).joinpath("train_keys.txt"), "r") as f:
+            self._train_keys = list(map(lambda x: x.strip(), f.readlines()))
+        with open(Path(self._data_folder).joinpath("val_keys.txt"), "r") as f:
+            self._val_keys = list(map(lambda x: x.strip(), f.readlines()))
 
     def _get_episode_file(self, episode, metadata):
         date = metadata.name.split('.')[0]
@@ -51,45 +57,27 @@ class AffordancesDataset(object):
         print(f"Warning: data file not found {path}")
 
     def _push_data(self, metadata, metadata_path):
-        # randomly select one episode for validation
-        # all these idxs will be stored as validation episodes
-        val_episode_idx = random.choice(range(len(metadata)))
-
         for i, (ep_key, episode_metadata) in enumerate(metadata.items()):
             self._data_cache[ep_key] = episode_metadata
-            if i == val_episode_idx:
-                self.load_episode(ep_key, episode_metadata, metadata_path, save_idx=False)
-                self.validation_episodes.append(ep_key)
-                continue
-            self.load_episode(ep_key, episode_metadata, metadata_path, save_idx=True)
-
-    def load_episode(self, ep_key: str, episode_metadata: dict, metadata_path: str, save_idx: bool = True):
-        data_path = self._get_episode_file(ep_key, metadata_path)
-        episode_data = np.load(data_path)
-        for t_key in episode_metadata.keys():
-            affordances = episode_data[t_key]
-            hlc = HLC_TO_NUMBER[episode_metadata[t_key]['command']]
-            self._data_cache[ep_key][t_key]['affordances'] = affordances
-            if save_idx:
-                idx_element = dict(episode=ep_key, timestamp=t_key)
-                self.timestamps_lists[hlc].append(idx_element)
+            data_path = self._get_episode_file(ep_key, metadata_path)
+            episode_data = np.load(data_path)
+            for t_key in episode_metadata.keys():
+                affordances = episode_data[t_key]
+                hlc = HLC_TO_NUMBER[episode_metadata[t_key]['command']]
+                self._data_cache[ep_key][t_key]['affordances'] = affordances
+                # just save the indexes for train episodes
+                if ep_key in self._train_keys:
+                    idx_element = dict(episode=ep_key, timestamp=t_key)
+                    self.timestamps_lists[hlc].append(idx_element)
 
     def get_episode(self, source: str, normalize_control: bool = True):
         """
         Get a tuple of lists with ordered data elements from an entire episode.
         """
-        ep_key = None
         if source == "train":
-            # find a train episode
-            found = False
-            while not found:
-                ep_key = random.choice(list(self._data_cache.keys()))
-                if ep_key not in self.validation_episodes:
-                    break
-            if not found:
-                raise RuntimeError("Couldn't find a train episode")
+            ep_key = random.choice(self._train_keys)
         else:
-            ep_key = random.choice(self.validation_episodes)
+            ep_key = random.choice(self._val_keys)
 
         timestamps = sorted(map(int, list(self._data_cache[ep_key].keys())))    # ensure time order
         print(f"Selected episode: {ep_key} with {len(timestamps)} frames")
