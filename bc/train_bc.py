@@ -89,6 +89,7 @@ class BCTrainer(object):
 
         self._batch_size = batch_size
         self.__hlc_to_train = [0, 1, 2, 3]
+        self._steps = {0: 0, 1: 0, 2: 0, 3: 0}
 
         if dataset:
             act_collate_fn = get_collate_fn(action_space)
@@ -188,6 +189,9 @@ class BCTrainer(object):
         for hlc in hlc_losses:
             hlc_loss = np.mean(np.array(hlc_losses[hlc]))
             overall_val_loss += hlc_loss
+            if self._wandb:
+                wandb.log({f'val_actor/bc_loss_{hlc}': hlc_loss,
+                           f'steps_{hlc}': self._steps[hlc]})
             print(f"val loss {hlc}: {hlc_loss:.6f}")
 
         print(f"val loss: {(overall_val_loss / len(hlc_losses)):.6f}")
@@ -198,7 +202,6 @@ class BCTrainer(object):
         if self._wandb:
             wandb.init(project='tsad', entity='autonomous-driving')
 
-        steps = {0: 0, 1: 0, 2: 0, 3: 0}
         for e in range(1, self._epochs + 1):
             for hlc in self.__hlc_to_train:
                 hlc_loader = self._train_loaders[hlc]
@@ -213,8 +216,8 @@ class BCTrainer(object):
 
                     if self._wandb:
                         wandb.log({f'train_actor/bc_loss_{hlc}': bc_loss,
-                                   f'steps_{hlc}': steps[hlc]})
-                    steps[hlc] += 1
+                                   f'steps_{hlc}': self._steps[hlc]})
+                    self._steps[hlc] += 1
 
                     sys.stdout.write("\r")
                     sys.stdout.write(
