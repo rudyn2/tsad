@@ -34,7 +34,7 @@ if __name__ == "__main__":
     # load one episode
     dataset = AffordancesDataset(args.data)
 
-    ep_aff, ep_ctrl, ep_speed, ep_cmd = dataset.get_episode(source="val", normalize_control=True)
+    ep_aff, ep_ctrl, ep_speed, ep_cmd = dataset.get_random_episode(source="val", normalize_control=True)
     target_speed = []
     real_steer = []
     pred_steer = []

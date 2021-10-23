@@ -9,6 +9,7 @@ from typing import Union
 from gym_carla.envs.carla_pid_env import CarlaPidEnv
 from gym_carla.envs.carla_env import CarlaEnv
 from torch.utils.data import DataLoader
+from collections import defaultdict
 
 from bc_agent import BCStochasticAgent, BCDeterministicAgent
 from models.carlaAffordancesDataset import AffordancesDataset, HLCAffordanceDataset
@@ -168,6 +169,31 @@ class BCTrainer(object):
         print("-" * 50)
         self._actor.train_mode()
 
+    def open_loop_validation(self, epoch: int):
+        self._actor.eval_mode()
+        print("-" * 50)
+        print(f"Open loop evaluation (EPOCH={epoch}):")
+        hlc_losses = defaultdict(list)
+        # THIS IS NOT OPTIMIZED, WE COULD USE BATCHES INSTEAD
+        for ep_key in self._dataset._val_keys:
+            for aff, ctrl, speed, cmd in zip(*dataset.get_episode_by_key(ep_key, normalize_control=True)):
+                task = HLC_TO_NUMBER[cmd]
+                action = np.array(agent.act_single(obs=dict(affordances=aff), task=task))
+                expected_action = np.array([speed, ctrl[2]])
+                step_hlc_loss = (action - expected_action) ** 2
+                hlc_losses[task].append(step_hlc_loss)
+
+        # aggregate the step losses
+        overall_val_loss = 0
+        for hlc in hlc_losses:
+            hlc_loss = np.mean(np.array(hlc_losses[hlc]))
+            overall_val_loss += hlc_loss
+            print(f"val loss {hlc}: {hlc_loss:.6f}")
+
+        print(f"val loss: {(overall_val_loss / len(hlc_losses)):.6f}")
+        print("-" * 50)
+        self._actor.train_mode()
+
     def run(self):
         if self._wandb:
             wandb.init(project='tsad', entity='autonomous-driving')
@@ -200,7 +226,7 @@ class BCTrainer(object):
                 self.eval()
                 self._actor.save()
             if e % self._open_loop_eval_frequency == 0:
-                self.open_loop_eval()
+                self.open_loop_validation(e)
 
 
 if __name__ == '__main__':

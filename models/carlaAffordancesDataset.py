@@ -24,7 +24,6 @@ class AffordancesDataset(object):
         self._data_folder = data_folder
         self._data_cache = {}
         self.timestamps_lists = defaultdict(list)       # dict of list of dict with episode-timestamp keys
-        self.validation_episodes = list()               # list of episode keys
         self._train_keys = list()
         self._val_keys = list()
 
@@ -70,17 +69,11 @@ class AffordancesDataset(object):
                     idx_element = dict(episode=ep_key, timestamp=t_key)
                     self.timestamps_lists[hlc].append(idx_element)
 
-    def get_episode(self, source: str, normalize_control: bool = True):
+    def get_episode_by_key(self, ep_key: str, normalize_control: bool = True):
         """
         Get a tuple of lists with ordered data elements from an entire episode.
         """
-        if source == "train":
-            ep_key = random.choice(self._train_keys)
-        else:
-            ep_key = random.choice(self._val_keys)
-
-        timestamps = sorted(map(int, list(self._data_cache[ep_key].keys())))    # ensure time order
-        print(f"Selected episode: {ep_key} with {len(timestamps)} frames")
+        timestamps = sorted(map(int, list(self._data_cache[ep_key].keys())))  # ensure time order
         ep_aff, ep_control, ep_speed, ep_command = [], [], [], []
         for timestamp in timestamps:
             affordances, control, speed, command = self.unpack_data(ep_key, str(timestamp))
@@ -95,6 +88,13 @@ class AffordancesDataset(object):
             ep_command.append(command)
 
         return ep_aff, ep_control, ep_speed, ep_command
+
+    def get_random_episode(self, source: str, normalize_control: bool = True):
+        if source == "train":
+            ep_key = random.choice(self._train_keys)
+        else:
+            ep_key = random.choice(self._val_keys)
+        return self.get_episode_by_key(ep_key, normalize_control)
 
     def get_item(self, index: int, hlc: int, use_next_speed: bool = False, normalize_control: bool = False):
         timestamp = self.timestamps_lists[hlc][index]
