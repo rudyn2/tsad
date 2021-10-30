@@ -17,7 +17,7 @@ services:
     links:
         - "server:carla"
     runtime: nvidia
-    command: python ../bc/train_bc.py --data /home/models/data/ --act-mode pid -H carla -p 2004 --eval-frequency 1 --norm-actions
+    command: python ../bc/train_bc.py --data /home/models/data/ --act-mode pid -H carla -p 2004 --eval-frequency 1 --norm-actions --save-loss --open-loop-eval-frequency 1
     volumes:
         - /home/johnny/Escritorio/:/home/models
     environment:

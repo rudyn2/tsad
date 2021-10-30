@@ -10,6 +10,7 @@ from gym_carla.envs.carla_pid_env import CarlaPidEnv
 from gym_carla.envs.carla_env import CarlaEnv
 from torch.utils.data import DataLoader
 from collections import defaultdict
+from pathlib import Path
 
 from bc_agent import BCStochasticAgent, BCDeterministicAgent
 from models.carlaAffordancesDataset import AffordancesDataset, HLCAffordanceDataset
@@ -38,6 +39,11 @@ def to_np(t):
         return np.array([])
     else:
         return t.cpu().detach().numpy()
+
+
+def save_to_file(value, path):
+    with open(path, "a+") as textfile:
+        textfile.write(value + "\n")
 
 
 def get_collate_fn(act_mode: str):
@@ -74,6 +80,7 @@ class BCTrainer(object):
                  use_wandb: bool = False,
                  use_next_speed: bool = False,
                  norm_actions: bool = False,
+                 save_loss: bool = False,
                  ):
         self._actor = actor
         self._dataset = dataset
@@ -86,6 +93,7 @@ class BCTrainer(object):
         self._eval_step = 0
         self._eval_episode = 0
         self._use_next_speed = use_next_speed
+        self._save_loss = save_loss
 
         self._batch_size = batch_size
         self.__hlc_to_train = [0, 1, 2, 3]
@@ -113,7 +121,8 @@ class BCTrainer(object):
             done = False
             while not done:
                 start = time.time()
-                action = self._actor.act_single(obs, task=obs["hlc"])
+                hlc = obs["hlc"]
+                action = self._actor.act_single(obs, task=hlc)
                 speed = np.linalg.norm(obs["speed"])
                 obs, rew, done, _ = self._env.step(action=action)
                 episode_reward += rew
@@ -121,8 +130,14 @@ class BCTrainer(object):
                 fps = 1 / (time.time() - start)
                 action_str = ("{:.4f}, "*len(action)).format(*action)
                 sys.stdout.write("\r")
-                sys.stdout.write(f"fps={fps:.2f} hlc={obs['hlc']} action={action_str} speed={speed:.2f} rew={rew:.2f}")
+                sys.stdout.write(
+                    f"fps={fps:.2f} hlc={hlc} action={action_str} speed={speed:.2f} rew={rew:.2f}")
                 sys.stdout.flush()
+                if self._save_loss:
+                    save_to_file(
+                        f'{self._eval_step},{self._eval_episode},{action_str},{speed},{hlc},{rew}', Path(
+                            self._dataset._data_folder).joinpath("eval_loss.txt")
+                    )
 
                 if self._wandb:
                     wandb.log({
@@ -139,7 +154,7 @@ class BCTrainer(object):
                     "eval/episode": self._eval_episode,
                 })
             self._eval_episode += 1
-            print(f"\nEval episode {e}: {episode_reward:.2f}")
+            print(f"\nEval episode {e} reward: {episode_reward:.2f}")
             total_reward += episode_reward
 
         avg_reward = total_reward / self._nb_eval_episode
@@ -160,7 +175,8 @@ class BCTrainer(object):
             hlc_loader = self._train_loaders[hlc]
             hlc_loss = 0
             for i, (obs, act) in enumerate(hlc_loader):
-                act_expert = torch.tensor(np.stack(act), device=self._device).float()
+                act_expert = torch.tensor(
+                    np.stack(act), device=self._device).float()
                 act_pred = self._actor.act_batch(obs, hlc)
                 hlc_loss += self.mse(act_pred, act_expert)
             hlc_loss /= len(hlc_loader)
@@ -177,12 +193,19 @@ class BCTrainer(object):
         hlc_losses = defaultdict(list)
         # THIS IS NOT OPTIMIZED, WE COULD USE BATCHES INSTEAD
         for ep_key in self._dataset._val_keys:
-            for aff, ctrl, speed, cmd in zip(*dataset.get_episode_by_key(ep_key, normalize_control=True)):
+            for idx, (aff, ctrl, speed, cmd) in enumerate(zip(*dataset.get_episode_by_key(ep_key, normalize_control=True))):
                 task = HLC_TO_NUMBER[cmd]
-                action = np.array(agent.act_single(obs=dict(affordances=aff), task=task))
+                action = np.array(agent.act_single(
+                    obs=dict(affordances=aff), task=task))
                 expected_action = np.array([speed, ctrl[2]])
                 step_hlc_loss = (action - expected_action) ** 2
                 hlc_losses[task].append(step_hlc_loss)
+
+                if self._save_loss:
+                    save_to_file(
+                        f'{epoch},{ep_key},{idx},{step_hlc_loss},{task}', Path(
+                            self._dataset._data_folder).joinpath("openloop_eval_loss.txt")
+                    )
 
         # aggregate the step losses
         overall_val_loss = 0
@@ -208,7 +231,8 @@ class BCTrainer(object):
 
                 for i, (obs, act) in enumerate(hlc_loader):
                     # parse to torch tensors
-                    obs = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0).float()
+                    obs = torch.stack(
+                        [torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0).float()
                     act = torch.tensor(act, device=self._device).float()
 
                     # update using bc and get the loss
@@ -224,6 +248,9 @@ class BCTrainer(object):
                         f"Epoch={str(e).zfill(get_number_order(self._epochs))}(hlc={hlc}) "
                         f"{str(i).zfill(get_number_order(len(hlc_loader)))}/{len(hlc_loader)}] bc_loss={bc_loss:.8f}")
                     sys.stdout.flush()
+                    if self._save_loss:
+                        save_to_file(f'{e},{i},{bc_loss},{hlc}', Path(
+                            self._dataset._data_folder).joinpath("train_loss.txt"))
             print("")
             if self._env and e % self._eval_frequency == 0:
                 self.eval()
@@ -235,14 +262,20 @@ class BCTrainer(object):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Settings for the data capture",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--data', required=True, type=str, help='Path to data folder')
-    parser.add_argument('-H', '--host', default='localhost', type=str, help='CARLA server ip address')
-    parser.add_argument('-p', '--port', default=2000, type=int, help='CARLA server port number')
-    parser.add_argument('--tm-port', default=8000, type=int, help='Traffic manager port')
-    parser.add_argument('-t', '--town', default='Town01', type=str, help="town to use")
+    parser.add_argument('--data', required=True, type=str,
+                        help='Path to data folder')
+    parser.add_argument('-H', '--host', default='localhost',
+                        type=str, help='CARLA server ip address')
+    parser.add_argument('-p', '--port', default=2000,
+                        type=int, help='CARLA server port number')
+    parser.add_argument('--tm-port', default=8000,
+                        type=int, help='Traffic manager port')
+    parser.add_argument('-t', '--town', default='Town01',
+                        type=str, help="town to use")
     parser.add_argument('-ve', '--vehicles', default=100, type=int,
                         help="number of vehicles to spawn in the simulation")
-    parser.add_argument('-wa', '--walkers', default=0, type=int, help="number of walkers to spawn in the simulation")
+    parser.add_argument('-wa', '--walkers', default=0, type=int,
+                        help="number of walkers to spawn in the simulation")
     parser.add_argument('--act-mode', default="raw", type=str, help="Action space. 'raw': raw actions (throttle, brake,"
                                                                     "steer), 'pid': (target_speed, steer)")
     parser.add_argument('--eval-frequency', default=50, type=int, help="Closed-loop evaluation frequency."
@@ -251,8 +284,12 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', default=15, type=int)
     parser.add_argument('--wandb', action='store_true')
     parser.add_argument('--checkpoint', default='checkpoint.pt', type=str)
-    parser.add_argument('--next-speed', action='store_true', help='Whether to use next step speed head or not.')
-    parser.add_argument('--norm-actions', action='store_true', help='Whether the action are normalized or not.')
+    parser.add_argument('--next-speed', action='store_true',
+                        help='Whether to use next step speed head or not.')
+    parser.add_argument('--norm-actions', action='store_true',
+                        help='Whether the action are normalized or not.')
+    parser.add_argument('--save-loss', action='store_true',
+                        help='Whether to save loss into file or not.')
 
     args = parser.parse_args()
 
@@ -314,5 +351,6 @@ if __name__ == '__main__':
                         use_next_speed=args.next_speed,
                         norm_actions=args.norm_actions,
                         eval_episodes=1,
+                        save_loss=args.save_loss
                         )
     trainer.run()
