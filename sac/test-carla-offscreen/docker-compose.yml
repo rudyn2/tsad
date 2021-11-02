@@ -1,0 +1,24 @@
+version: "3.9"
+services:
+  server:
+    image: carlasim/carla:0.9.11
+    ports:
+        - "2004-2006:2004-2006"
+    command: ./CarlaUE4.sh -opengl -quality-level=low -world-port=2004
+    runtime: nvidia
+    environment:
+        - NVIDIA_VISIBLE_DEVICES=all
+        - SDL_VIDEODRIVER=offscreen
+
+  client:
+    build: ../../
+    links:
+        - "server:carla"
+    runtime: nvidia
+    command: python ../sac/train_sac.py --act-mode pid -H carla -p 2004 --norm-actions --learn-temperature --actor-hidden-dim 512 --critic-hidden-dim 512 
+    volumes:
+        - /home/johnny/Escritorio/:/home/models
+    environment:
+        - NVIDIA_VISIBLE_DEVICES=all
+    depends_on:
+        - server

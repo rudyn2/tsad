@@ -84,7 +84,8 @@ class SACTrainer(object):
                     action = self.agent.act(obs, sample=False)
                     obs, reward, done, _ = self.env.step(action)
                     if self.log_eval and self.wandb:
-                        wandb.log({f"instant/action/action_{i}": value for i, value in enumerate(action)})
+                        wandb.log(
+                            {f"instant/action/action_{i}": value for i, value in enumerate(action)})
                         wandb.log({"instant/reward": reward})
                         wandb.log({"eval/step": steps})
                     episode_reward += reward
@@ -92,7 +93,8 @@ class SACTrainer(object):
                     duration += 1
 
             if self.log_eval and self.wandb:
-                wandb.log({'eval/episode': episode, 'eval/episode_reward': episode_reward, 'eval/duration': duration})
+                wandb.log({'eval/episode': episode,
+                          'eval/episode_reward': episode_reward, 'eval/duration': duration})
             average_episode_reward += episode_reward
         average_episode_reward /= self.num_eval_episodes
 
@@ -125,7 +127,7 @@ class SACTrainer(object):
                     wandb.log({'train/episode_reward': episode_reward,
                                'train/episode': episode})
 
-                print("\nResetting")
+                # print("\nResetting")
                 obs = self.env.reset()
                 episode_reward = 0
                 episode_step = 0
@@ -171,10 +173,9 @@ class SACTrainer(object):
                             f"{self.num_train_steps/1000:.0f}k), "
                             f"[{episode}:{episode_step}:{ROAD_OPTION_TO_NAME[obs['hlc']]}]| "
                             f"rew={reward:.2f}")
-
             sys.stdout.write("\r")
             sys.stdout.write(f"Training step: {self.step}/{self.num_train_steps}"
-                             f"{self.replay_buffer.log_status() if self.step % 2000 == 0 else ''}")
+                            f"{self.replay_buffer.log_status() if self.step % 2000 == 0 else ''}")
 
     def end(self):
         # save last agent

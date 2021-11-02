@@ -1,0 +1,26 @@
+version: "3.9"
+services:
+  server:
+    image: carlasim/carla:0.9.11
+    ports:
+        - "2004-2006:2004-2006"
+    command: ./CarlaUE4.sh -opengl -quality-level=low -world-port=2004
+    runtime: nvidia
+    volumes:
+        - /tmp/.X11-unix:/tmp/.X11-unix 
+    environment:
+        - NVIDIA_VISIBLE_DEVICES=all
+        - DISPLAY=$DISPLAY
+
+  client:
+    build: ../../
+    links:
+        - "server:carla"
+    runtime: nvidia
+    command: python ../bc/test_bc.py --act-mode pid -H carla -p 2004 --checkpoint /home/models/data/checkpoint.pt --epochs 5 --norm-actions
+    volumes:
+        - /home/johnny/Escritorio/:/home/models
+    environment:
+        - NVIDIA_VISIBLE_DEVICES=all
+    depends_on:
+        - server

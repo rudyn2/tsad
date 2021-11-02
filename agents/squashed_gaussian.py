@@ -40,7 +40,7 @@ class SquashedGaussianMLP(nn.Module):
         log_std = self.log_std_layer(net_out)
         log_std = torch.clamp(log_std, LOG_STD_MIN, LOG_STD_MAX)
         std = torch.exp(log_std)
-        return mu, std
+        return Normal(mu, std)
 
     def forward(self, obs, deterministic=False):
         pi_distribution = self.get_distribution(obs)

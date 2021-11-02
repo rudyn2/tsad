@@ -33,14 +33,13 @@ class SACActor(MultiTaskActor, nn.Module):
     def act_batch(self, obs: torch.Tensor, task: int) -> Union[list, torch.Tensor]:
         pass
 
-    def act_single(self, obs: torch.Tensor, task: int) -> list:
+    def act_single(self, obs: torch.Tensor, sample: bool, task: int) -> list:
         pi_distribution = self._actors[str(task)].get_distribution(obs)
         if sample:
             pi_action = pi_distribution.rsample()
         else:
             pi_action = pi_distribution.mean
-        pi_action = torch.tanh(pi_action)
-        return list(utils.to_np(pi_action.clamp(*self._action_range)))
+        return utils.to_np(pi_action).squeeze()
 
     def forward(self, obs: torch.Tensor, hlc: int):
         """
@@ -49,9 +48,9 @@ class SACActor(MultiTaskActor, nn.Module):
         """
         pi_distribution = self._actors[str(hlc)].get_distribution(obs)
         pi_action = pi_distribution.rsample()
-        pi_action = torch.tanh(pi_action)
         logp_pi = pi_distribution.log_prob(pi_action).sum(axis=-1)
-        logp_pi -= (2 * (np.log(2) - pi_action - F.softplus(-2 * pi_action))).sum(axis=1)
+        logp_pi -= (2 * (np.log(2) - pi_action -
+                    F.softplus(-2 * pi_action))).sum(axis=1)
         return pi_action, logp_pi
 
     def get_supervised_loss(self, obs: torch.Tensor, act: torch.Tensor, task: int) -> torch.Tensor:
@@ -124,11 +123,13 @@ if __name__ == "__main__":
 
     # create fake data
     obs = torch.rand((batch_size, obs_dim), requires_grad=True, device=device)
-    act = torch.rand((batch_size, act_dim), requires_grad=True, device=device) * act_range[1]
+    act = torch.rand((batch_size, act_dim), requires_grad=True,
+                     device=device) * act_range[1]
 
     # create sac actor and critic
     critic = SACCritic(input_dim=obs_dim, hidden_dim=(128, 64))
-    actor = SACActor(input_dim=obs_dim, hidden_dim=(128, 64), output_dim=act_dim)
+    actor = SACActor(input_dim=obs_dim, hidden_dim=(
+        128, 64), output_dim=act_dim)
     critic.to(device=device)
     actor.to(device=device)
 
@@ -141,5 +142,3 @@ if __name__ == "__main__":
     assert action.size(0) == batch_size and action.size(1) == act_dim
     assert logp.size(0) == batch_size and len(logp.size()) == 1
     assert torch.sum(logp > 0) == 0
-
-

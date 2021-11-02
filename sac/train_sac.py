@@ -4,50 +4,85 @@ import warnings
 
 import torch
 import wandb
-from gym_carla.envs.carla_env import CarlaEnv
 from gym_carla.envs.carla_pid_env import CarlaPidEnv
+from gym_carla.envs.carla_env import CarlaEnv
 from termcolor import colored
 from torch.utils.data import DataLoader
 
-from bc.train_bc import get_collate_fn
 from models.carlaAffordancesDataset import HLCAffordanceDataset, AffordancesDataset
 from sac.replay_buffer import OnlineReplayBuffer
 from sac.sac_agent import SACAgent
 from sac.trainer import SACTrainer
+
+
+def get_collate_fn(act_mode: str):
+    def collate_fn(samples: list) -> (dict, dict):
+        """
+        Returns a dictionary with grouped samples. Each sample is a tuple which comes from the dataset __getitem__.
+        """
+        obs, act = [], []
+        for t in samples:
+            obs.append(dict(encoding=t[0]))
+            if act_mode == "pid":
+                act.append(np.array([t[2], t[1][2]]))
+            else:
+                act.append(t[1])
+        return obs, act
+    return collate_fn
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="SAC Trainer",
                                      formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     # carla parameters
     carla_config = parser.add_argument_group('CARLA config')
-    carla_config.add_argument('--host', default='172.18.0.1', type=str, help='IP address of CARLA host.')
-    carla_config.add_argument('--port', default=2008, type=int, help='Port number of CARLA host.')
-    carla_config.add_argument('--vehicles', default=100, type=int, help='Number of vehicles in the simulation.')
-    carla_config.add_argument('--walkers', default=50, type=int, help='Number of walkers in the simulation.')
+    carla_config.add_argument(
+        '-H', '--host', default='172.18.0.1', type=str, help='IP address of CARLA host.')
+    carla_config.add_argument('-p', '--port', default=2008,
+                              type=int, help='Port number of CARLA host.')
+    carla_config.add_argument(
+        '-ve', '--vehicles', default=100, type=int, help='Number of vehicles in the simulation.')
+    carla_config.add_argument(
+        '-wa', '--walkers', default=50, type=int, help='Number of walkers in the simulation.')
 
     # SAC parameters
     rl_group = parser.add_argument_group('RL Config')
-    rl_group.add_argument('--num-seed', default=2000, type=int, help='Number of seed steps before starting to train.')
+    parser.add_argument('--norm-actions', action='store_true',
+                        help='Whether the action are normalized or not.')
+    rl_group.add_argument('--num-seed', default=2000, type=int,
+                          help='Number of seed steps before starting to train.')
     rl_group.add_argument('--control-frequency', default=4, type=int, help='Number of times that a control signal'
                                                                            'is going to be repeated to the environment')
-    rl_group.add_argument('--act-mode', default="pid", type=str, help="Action space.")
-    rl_group.add_argument('--max-episode-steps', default=200, type=int, help='Maximum number of steps per episode.')
-    rl_group.add_argument('--num-eval-episodes', default=3, type=int, help='Number of evaluation episodes.')
-    rl_group.add_argument('--num-train-steps', default=1e6, type=int, help='Number of training steps.')
-    rl_group.add_argument('--eval-frequency', default=10, type=int, help='number of episodes between evaluations.')
-    rl_group.add_argument('--learn-temperature', action='store_true', help='Whether to lean alpha value or not.')
-    rl_group.add_argument('--reward-scale', default=1, type=float, help='Reward scale factor (positive)')
-    rl_group.add_argument('--speed-reward-weight', default=1, type=float, help='Speed reward weight.')
-    rl_group.add_argument('--collision-reward-weight', default=1, type=float, help='Collision reward weight')
-    rl_group.add_argument('--lane-distance-reward-weight', default=1, type=float, help='Lane distance reward weight')
+    rl_group.add_argument('--act-mode', default="pid",
+                          type=str, help="Action space.")
+    rl_group.add_argument('--max-episode-steps', default=200,
+                          type=int, help='Maximum number of steps per episode.')
+    rl_group.add_argument('--num-eval-episodes', default=3,
+                          type=int, help='Number of evaluation episodes.')
+    rl_group.add_argument('--num-train-steps', default=1e6,
+                          type=int, help='Number of training steps.')
+    rl_group.add_argument('--eval-frequency', default=10,
+                          type=int, help='number of episodes between evaluations.')
+    rl_group.add_argument('--learn-temperature', action='store_true',
+                          help='Whether to lean alpha value or not.')
+    rl_group.add_argument('--reward-scale', default=1,
+                          type=float, help='Reward scale factor (positive)')
+    rl_group.add_argument('--speed-reward-weight', default=1,
+                          type=float, help='Speed reward weight.')
+    rl_group.add_argument('--collision-reward-weight',
+                          default=1, type=float, help='Collision reward weight')
+    rl_group.add_argument('--lane-distance-reward-weight',
+                          default=1, type=float, help='Lane distance reward weight')
 
     models_parameters = parser.add_argument_group('Actor-Critic config')
     models_parameters.add_argument('--actor-hidden-dim', type=int, default=128, help='Size of hidden layer in the '
                                                                                      'actor model.')
     models_parameters.add_argument('--critic-hidden-dim', type=int, default=128, help='Size of hidden layer in the '
                                                                                       'critic model.')
-    models_parameters.add_argument('--actor-weights', type=str, default=None, help='Path to actor weights')
-    models_parameters.add_argument('--critic-weights', type=str, default=None, help='Path to critic weights')
+    models_parameters.add_argument(
+        '--actor-weights', type=str, default=None, help='Path to actor weights')
+    models_parameters.add_argument(
+        '--critic-weights', type=str, default=None, help='Path to critic weights')
 
     loss_parameters = parser.add_argument_group('Loss parameters')
     loss_parameters.add_argument('--actor-l2', type=float, default=4e-2,
@@ -56,21 +91,24 @@ if __name__ == '__main__':
                                  help='L2 regularization for the critic model.')
 
     buffer_group = parser.add_argument_group('Buffer config')
-    buffer_group.add_argument('--batch-size', default=1024, type=int, help='Batch size.')
+    buffer_group.add_argument(
+        '--batch-size', default=1024, type=int, help='Batch size.')
     buffer_group.add_argument('--online-memory-size', default=8192, type=int, help='Number of steps to be stored in the'
                                                                                    'online buffer')
 
     # in case of using behavioral cloning
     bc_group = parser.add_argument_group('Behavioral cloning config')
-    bc_group.add_argument('--bc', default=None, type=str, help='path to dataset (without extensions)')
-    bc_group.add_argument('--wandb', action='store_true', help='Whether or not to use wandb')
+    bc_group.add_argument('--bc', default=None, type=str,
+                          help='path to dataset (without extensions)')
+    bc_group.add_argument('--wandb', action='store_true',
+                          help='Whether or not to use wandb')
 
     args = parser.parse_args()
 
     warnings.filterwarnings("ignore")
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     control_action_dim = 2 if args.act_mode == "pid" else 3
-    action_range = (-1, 1) if args.act_mode == "raw" else (-1, 5)
+    action_range = (-1, 1)
     offline_dataset_path = args.bc
 
     if args.wandb:
@@ -93,9 +131,10 @@ if __name__ == '__main__':
             'walkers': args.walkers,  # number of walkers in the simulation
             'obs_size': 224,  # sensor width and height
             'max_past_step': 1,  # the number of past steps to draw
-            'dt': 1 / 30,  # time interval between two frames
-            'reward_weights': [1, 1, 1],  # reward weights [speed, collision, lane distance]
-            'continuous_steer_range': [-1, 1],
+            'dt': 0.025,  # time interval between two frames
+            # reward weights [speed, collision, lane distance]
+            'reward_weights': [0.3, 0.3, 0.3],
+            'normalized_input': args.norm_actions,
             'ego_vehicle_filter': 'vehicle.lincoln*',  # filter for defining ego vehicle
             'max_time_episode': args.max_episode_steps,  # maximum timesteps per episode
             'max_waypt': 12,  # maximum number of waypoints
@@ -108,13 +147,15 @@ if __name__ == '__main__':
 
         if args.act_mode == "pid":
             env_params.update({
-                'continuous_speed_range': [0, desired_speed]
+                'continuous_speed_range': [0.0, desired_speed],
+                'continuous_steer_range': [-1.0, 1.0],
             })
             carla_env = CarlaPidEnv(env_params)
         else:
             env_params.update({
-                'continuous_throttle_range': [0, 1],
-                'continuous_brake_range': [0, 1]
+                'continuous_throttle_range': [0.0, 1.0],
+                'continuous_brake_range': [0.0, 1.0],
+                'continuous_steer_range': [-1.0, 1.0],
             })
             carla_env = CarlaEnv(env_params)
         carla_env.reset()

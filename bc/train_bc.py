@@ -45,7 +45,6 @@ def save_to_file(value, path):
     with open(path, "a+") as textfile:
         textfile.write(value + "\n")
 
-
 def get_collate_fn(act_mode: str):
     def collate_fn(samples: list) -> (dict, dict):
         """
@@ -60,7 +59,6 @@ def get_collate_fn(act_mode: str):
                 act.append(t[1])
         return obs, act
     return collate_fn
-
 
 class BCTrainer(object):
     """

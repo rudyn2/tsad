@@ -11,7 +11,7 @@ services:
         - SDL_VIDEODRIVER=offscreen
 
   client:
-    build: ../
+    build: ../../
     links:
         - "server:carla"
     runtime: nvidia

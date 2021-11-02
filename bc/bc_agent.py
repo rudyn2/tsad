@@ -39,17 +39,17 @@ class BCStochasticAgent(MultiTaskActor):
     def act_batch(self, obs: list, task: int) -> torch.Tensor:
         with torch.no_grad():
             encoding = torch.stack([torch.tensor(o['encoding'], device=self._device) for o in obs], dim=0).float()
-            action, _ = self._actor[str(task)].get_distribution(encoding)
+            action = self._actor[str(task)].get_distribution(encoding).mean
             return action
 
     def act_single(self, obs: dict, task: int) -> list:
         encodings = torch.tensor(obs['affordances'], device=self._device).unsqueeze(0).float()
         with torch.no_grad():
-            action, _ = self._actor[str(task)].get_distribution(encodings)  # (1, 2)
+            action = self._actor[str(task)].get_distribution(encodings).mean  # (1, 2)
         return list(action.squeeze(dim=0).cpu().numpy())                    # [target_speed, steer]
 
     def get_supervised_loss(self, obs: torch.Tensor, act: torch.Tensor, task: int) -> float:
-        pred_act, _ = self._actor[str(task)].get_distribution(obs)
+        pred_act = self._actor[str(task)].get_distribution(obs).mean
         loss = self._mse(pred_act, act)
         self._actor_optimizer.zero_grad()
         loss.backward()

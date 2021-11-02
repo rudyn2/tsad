@@ -71,3 +71,18 @@ def unnormalize_action(action: list):
         return throttle, brake, steer
     else:
         raise Exception('Wrong action dimension')
+
+def get_collate_fn(act_mode: str):
+    def collate_fn(samples: list) -> (dict, dict):
+        """
+        Returns a dictionary with grouped samples. Each sample is a tuple which comes from the dataset __getitem__.
+        """
+        obs, act = [], []
+        for t in samples:
+            obs.append(dict(encoding=t[0]))
+            if act_mode == "pid":
+                act.append(np.array([t[2], t[1][2]]))
+            else:
+                act.append(t[1])
+        return obs, act
+    return collate_fn

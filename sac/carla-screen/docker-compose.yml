@@ -13,11 +13,11 @@ services:
         - DISPLAY=$DISPLAY
 
   client:
-    build: ../
+    build: ../../
     links:
         - "server:carla"
     runtime: nvidia
-    command: python ../bc/train_bc.py --data /home/models/data/ --act-mode pid -H carla -p 2004 --eval-frequency 1 --norm-actions --save-loss --open-loop-eval-frequency 1
+    command: python ../sac/train_sac.py --act-mode pid -H carla -p 2004 --norm-actions --learn-temperature --actor-hidden-dim 512 --critic-hidden-dim 512 
     volumes:
         - /home/johnny/Escritorio/:/home/models
     environment:

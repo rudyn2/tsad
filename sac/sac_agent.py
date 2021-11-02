@@ -120,7 +120,7 @@ class SACAgent(object):
         return self.log_alpha.exp()
 
     def act(self, obs, sample=False):
-        single_obs = to_tensor(obs["affordances"], device=self.device)[0]
+        single_obs = to_tensor(obs["affordances"], device=self.device)[0].unsqueeze(dim=0)
         action = self.actor.act_single(single_obs, sample, obs['hlc'])
         return action
 
