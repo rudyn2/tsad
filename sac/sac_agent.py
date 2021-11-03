@@ -212,7 +212,7 @@ class SACAgent(object):
                 self.update_actor_and_alpha(obs, hlc)
             unfreeze_net(self.critic)
 
-            if step % self.actor_bc_update_frequency == 0:
+            if bc_loaders and step % self.actor_bc_update_frequency == 0:
                 self.update_actor_with_bc(bc_loaders[hlc], hlc)
 
             if step % self.critic_target_update_frequency == 0:

@@ -147,7 +147,7 @@ class SACTrainer(object):
 
             # run training update
             if self.step >= self.num_seed_steps:
-                self.agent.update(self.replay_buffer, self.step)
+                self.agent.update(self.replay_buffer, self.bc_loaders, self.step)
 
             # save checkpoints
             if self.step % 50000 == 0:
