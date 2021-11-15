@@ -15,6 +15,7 @@ from gym_carla.envs.carla_env import CarlaEnv
 from gym_carla.envs.carla_pid_env import CarlaPidEnv
 from sac.sac_agent import SACAgent
 
+RECONECT_EVERY = 5
 
 ROAD_OPTION_TO_NAME = {
     0: "Left",
@@ -132,6 +133,9 @@ class SACTrainer(object):
                 episode_reward = 0
                 episode_step = 0
                 episode += 1
+
+                if episode % RECONECT_EVERY == RECONECT_EVERY - 1:
+                    self.env.reconect()
 
             # sample action for data collection
             if self.step < self.num_seed_steps:
